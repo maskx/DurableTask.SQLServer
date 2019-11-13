@@ -1,0 +1,36 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 16
+VisualStudioVersion = 16.0.28902.138
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "maskx.DurableTask.SQLServer", "src\maskx.DurableTask.SQLServer\maskx.DurableTask.SQLServer.csproj", "{3389FC9F-E22F-4516-A2BA-F00CE8AF4E08}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "maskx.DurableTask.SQLServer.Tests", "src\maskx.DurableTask.SQLServer.Tests\maskx.DurableTask.SQLServer.Tests.csproj", "{EADCA1DC-1718-4E2F-B19F-4DABBFECF2B5}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "doc", "doc", "{28C20C86-81A5-4A5A-8EF5-4FECA3FB261B}"
+	ProjectSection(SolutionItems) = preProject
+		README.md = README.md
+	EndProjectSection
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{3389FC9F-E22F-4516-A2BA-F00CE8AF4E08}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3389FC9F-E22F-4516-A2BA-F00CE8AF4E08}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3389FC9F-E22F-4516-A2BA-F00CE8AF4E08}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3389FC9F-E22F-4516-A2BA-F00CE8AF4E08}.Release|Any CPU.Build.0 = Release|Any CPU
+		{EADCA1DC-1718-4E2F-B19F-4DABBFECF2B5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{EADCA1DC-1718-4E2F-B19F-4DABBFECF2B5}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{EADCA1DC-1718-4E2F-B19F-4DABBFECF2B5}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{EADCA1DC-1718-4E2F-B19F-4DABBFECF2B5}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {1A07E3F7-874D-4202-A996-323F535B5A1E}
+	EndGlobalSection
+EndGlobal

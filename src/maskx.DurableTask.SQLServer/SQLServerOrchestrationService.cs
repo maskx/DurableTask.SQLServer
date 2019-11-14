@@ -10,9 +10,10 @@ using Newtonsoft.Json;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Data.Common;
+using System.Data.SqlClient;
 using System.Diagnostics;
 using System.Linq;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -20,25 +21,22 @@ namespace maskx.DurableTask.SQLServer
 {
     public class SQLServerOrchestrationService : IOrchestrationService, IOrchestrationServiceClient, IDisposable
     {
-        private const int StatusPollingIntervalInSeconds = 2;
         private static readonly DataConverter DataConverter = new JsonDataConverter();
-        private readonly TaskSessionManager taskSessionManager;
 
+        private readonly SessionManager sessionManager;
+        private readonly MessageMagager messageMagager;
+        private SQLServerOrchestrationServiceSettings settings;
+
+        private const int StatusPollingIntervalInSeconds = 2;
         private Dictionary<string, byte[]> sessionState;
         private readonly int MaxConcurrentWorkItems = 20;
         private readonly List<TaskMessage> timerMessages;
-
-        private readonly PeekLockQueue workerQueue;
-        private SQLServerOrchestrationServiceSettings settings;
 
         private readonly CancellationTokenSource cancellationTokenSource;
 
         private readonly IOrchestrationServiceInstanceStore instanceStore;
 
-        private readonly object thisLock = new object();
         private readonly object timerLock = new object();
-
-        private readonly ConcurrentDictionary<string, TaskCompletionSource<OrchestrationState>> orchestrationWaiters;
 
         /// <summary>
         ///     Creates a new instance of the LocalOrchestrationService with default settings
@@ -49,40 +47,23 @@ namespace maskx.DurableTask.SQLServer
             IOrchestrationServiceBlobStore blobStore,
             SQLServerOrchestrationServiceSettings settings)
         {
-            this.taskSessionManager = new TaskSessionManager(connectionString);
-            this.workerQueue = new PeekLockQueue(connectionString);
             this.settings = settings;
+            this.instanceStore = instanceStore;
+            SQLServerSettings sqlSettings = new SQLServerSettings()
+            {
+                HubName = hubName,
+                MessageLockedSeconds = settings.MessageLockedSeconds,
+                SessionLockedSeconds = settings.SessionLockedSeconds,
+                GetDatabaseConnection = () => Task.Run(() => new SqlConnection(connectionString) as DbConnection)
+            };
+            this.sessionManager = new SessionManager(sqlSettings);
+            this.messageMagager = new MessageMagager(sqlSettings);
+
             this.sessionState = new Dictionary<string, byte[]>();
 
             this.timerMessages = new List<TaskMessage>();
-            this.instanceStore = instanceStore;
-            this.orchestrationWaiters = new ConcurrentDictionary<string, TaskCompletionSource<OrchestrationState>>();
+
             this.cancellationTokenSource = new CancellationTokenSource();
-        }
-
-        private async Task TimerMessageSchedulerAsync()
-        {
-            while (!this.cancellationTokenSource.Token.IsCancellationRequested)
-            {
-                foreach (TaskMessage tm in this.timerMessages.ToList())
-                {
-                    var te = tm.Event as TimerFiredEvent;
-
-                    if (te == null)
-                    {
-                        // TODO : unobserved task exception (AFFANDAR)
-                        throw new InvalidOperationException("Invalid timer message");
-                    }
-
-                    if (te.FireAt <= DateTime.UtcNow)
-                    {
-                        await this.taskSessionManager.SendMessageBatch(tm);
-                        this.timerMessages.Remove(tm);
-                    }
-                }
-
-                await Task.Delay(TimeSpan.FromSeconds(1));
-            }
         }
 
         /******************************/
@@ -98,16 +79,22 @@ namespace maskx.DurableTask.SQLServer
         /// <inheritdoc />
         public async Task CreateAsync(bool recreateInstanceStore)
         {
+            List<Task> tasks = new List<Task>();
             if (this.instanceStore != null)
             {
-                await this.instanceStore.InitializeStoreAsync(recreateInstanceStore);
+                tasks.Add(this.instanceStore.InitializeStoreAsync(recreateInstanceStore));
             }
+            tasks.Add(this.sessionManager.InitializeSessionManagerAsync(true));
+            tasks.Add(this.messageMagager.InitializeMessageManagerAsync(true));
+            await Task.WhenAll(tasks);
         }
 
         /// <inheritdoc />
-        public Task CreateIfNotExistsAsync()
+        public async Task CreateIfNotExistsAsync()
         {
-            return Task.FromResult<object>(null);
+            var t1 = this.sessionManager.InitializeSessionManagerAsync(false);
+            var t2 = this.messageMagager.InitializeMessageManagerAsync(false);
+            await Task.WhenAll(t1, t2);
         }
 
         /// <inheritdoc />
@@ -119,10 +106,14 @@ namespace maskx.DurableTask.SQLServer
         /// <inheritdoc />
         public async Task DeleteAsync(bool deleteInstanceStore)
         {
-            if (this.instanceStore != null)
+            List<Task> tasks = new List<Task>();
+            if (deleteInstanceStore && this.instanceStore != null)
             {
-                await this.instanceStore.DeleteStoreAsync();
+                tasks.Add(this.instanceStore.DeleteStoreAsync());
             }
+            tasks.Add(this.sessionManager.DeleteSessionManagerAsync());
+            tasks.Add(this.messageMagager.DeleteMessageManagerAsync());
+            await Task.WhenAll(tasks);
         }
 
         /// <inheritdoc />
@@ -190,7 +181,7 @@ namespace maskx.DurableTask.SQLServer
             }
             try
             {
-                await this.taskSessionManager.CreateSession(creationMessage);
+                await this.sessionManager.CreateSessionAsync(creationMessage);
             }
             catch (Exception ex)
             {
@@ -211,7 +202,7 @@ namespace maskx.DurableTask.SQLServer
             {
                 return;
             }
-            await this.taskSessionManager.SendMessageBatch(messages);
+            await this.sessionManager.SendMessageBatchAsync(messages);
         }
 
         /// <inheritdoc />
@@ -297,11 +288,13 @@ namespace maskx.DurableTask.SQLServer
             TimeSpan receiveTimeout,
             CancellationToken cancellationToken)
         {
-            TaskSession taskSession = await this.taskSessionManager.AcceptSessionAsync(receiveTimeout,
+            SQLServerOrchestrationSession taskSession = await this.sessionManager.AcceptSessionAsync(receiveTimeout,
                 CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, this.cancellationTokenSource.Token).Token);
 
             if (taskSession == null)
             {
+                await Task.Delay(this.settings.IdleSleepSeconds * 1000,
+                    CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, this.cancellationTokenSource.Token).Token);
                 return null;
             }
             long maxSequenceNumber = taskSession.Messages.Max(message => message.SequenceNumber);
@@ -318,7 +311,7 @@ namespace maskx.DurableTask.SQLServer
             {
                 NewMessages = taskSession.Messages.ToList(),
                 InstanceId = taskSession.Id,
-                LockedUntilUtc = DateTime.UtcNow.AddMinutes(5),
+                LockedUntilUtc = taskSession.LockedUntilUtc,
                 OrchestrationRuntimeState =
                     DeserializeOrchestrationRuntimeState(taskSession.SessionState) ??
                     new OrchestrationRuntimeState(),
@@ -356,8 +349,7 @@ namespace maskx.DurableTask.SQLServer
                 {
                     foreach (TaskMessage m in outboundMessages)
                     {
-                        // TODO : make async (AFFANDAR)
-                        this.workerQueue.SendMessageAsync(m);
+                        await this.messageMagager.SendMessageAsync(m);
                     }
                 }
 
@@ -373,11 +365,11 @@ namespace maskx.DurableTask.SQLServer
                 }
                 if (orchestratorMessages?.Count > 0)
                 {
-                    await this.taskSessionManager.SendMessageBatch(orchestratorMessages.ToArray());
+                    await this.sessionManager.SendMessageBatchAsync(orchestratorMessages.ToArray());
                 }
                 if (continuedAsNewMessage != null)
                 {
-                    await this.taskSessionManager.SendMessageBatch(continuedAsNewMessage);
+                    await this.sessionManager.SendMessageBatchAsync(continuedAsNewMessage);
                 }
                 if (this.instanceStore != null)
                 {
@@ -408,10 +400,9 @@ namespace maskx.DurableTask.SQLServer
         }
 
         /// <inheritdoc />
-        public Task AbandonTaskOrchestrationWorkItemAsync(TaskOrchestrationWorkItem workItem)
+        public async Task AbandonTaskOrchestrationWorkItemAsync(TaskOrchestrationWorkItem workItem)
         {
-            this.taskSessionManager.AbandonSession(workItem.InstanceId);
-            return Task.FromResult<object>(null);
+            await this.sessionManager.AbandonSessionAsync(workItem.InstanceId);
         }
 
         /// <inheritdoc />
@@ -444,10 +435,9 @@ namespace maskx.DurableTask.SQLServer
         }
 
         /// <inheritdoc />
-        public Task RenewTaskOrchestrationWorkItemLockAsync(TaskOrchestrationWorkItem workItem)
+        public async Task RenewTaskOrchestrationWorkItemLockAsync(TaskOrchestrationWorkItem workItem)
         {
-            workItem.LockedUntilUtc = workItem.LockedUntilUtc.AddMinutes(5);
-            return Task.FromResult(0);
+            workItem.LockedUntilUtc = await this.sessionManager.RenewLock(workItem.InstanceId);
         }
 
         /// <inheritdoc />
@@ -478,43 +468,38 @@ namespace maskx.DurableTask.SQLServer
         /// <inheritdoc />
         public async Task<TaskActivityWorkItem> LockNextTaskActivityWorkItem(TimeSpan receiveTimeout, CancellationToken cancellationToken)
         {
-            TaskMessage taskMessage = await this.workerQueue.ReceiveMessageAsync(receiveTimeout,
+            TaskActivityWorkItem workItem = await this.messageMagager.ReceiveMessageAsync(receiveTimeout,
                 CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, this.cancellationTokenSource.Token).Token);
 
-            if (taskMessage == null)
+            if (workItem == null)
             {
+                await Task.Delay(this.settings.IdleSleepSeconds * 1000,
+                    CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, this.cancellationTokenSource.Token).Token);
                 return null;
             }
 
-            return new TaskActivityWorkItem
-            {
-                // for the in memory provider we will just use the TaskMessage object ref itself as the id
-                Id = "N/A",
-                LockedUntilUtc = DateTime.UtcNow.AddMinutes(5),
-                TaskMessage = taskMessage,
-            };
+            return workItem;
         }
 
         /// <inheritdoc />
-        public Task AbandonTaskActivityWorkItemAsync(TaskActivityWorkItem workItem)
+        public async Task AbandonTaskActivityWorkItemAsync(TaskActivityWorkItem workItem)
         {
-            this.workerQueue.AbandonMessageAsync(workItem.TaskMessage);
-            return Task.FromResult<object>(null);
+            await this.messageMagager.AbandonMessageAsync(workItem.TaskMessage);
         }
 
         /// <inheritdoc />
         public async Task CompleteTaskActivityWorkItemAsync(TaskActivityWorkItem workItem, TaskMessage responseMessage)
         {
-            this.workerQueue.CompleteMessageAsync(workItem.TaskMessage);
-            await this.taskSessionManager.SendMessageBatch(responseMessage);
+            var t1 = this.messageMagager.CompleteMessageAsync(workItem.TaskMessage);
+            var t2 = this.sessionManager.SendMessageBatchAsync(responseMessage);
+            await Task.WhenAll(t1, t2);
         }
 
         /// <inheritdoc />
-        public Task<TaskActivityWorkItem> RenewTaskActivityWorkItemLockAsync(TaskActivityWorkItem workItem)
+        public async Task<TaskActivityWorkItem> RenewTaskActivityWorkItemLockAsync(TaskActivityWorkItem workItem)
         {
-            // TODO : add expiration if we want to unit test it (AFFANDAR)
-            workItem.LockedUntilUtc = workItem.LockedUntilUtc.AddMinutes(5);
-            return Task.FromResult(workItem);
+            workItem.LockedUntilUtc = await this.messageMagager.RenewLock(workItem.TaskMessage);
+            return workItem;
         }
 
         private string SerializeOrchestrationRuntimeState(OrchestrationRuntimeState runtimeState)
@@ -556,9 +541,9 @@ namespace maskx.DurableTask.SQLServer
 
         #region support unit test
 
-        public int GetPendingOrchestrationsCount()
+        public async Task<int> GetPendingOrchestrationsCount()
         {
-            return 9999999;
+            return await this.sessionManager.GetPendingOrchestrationsCount();
         }
 
         #endregion support unit test
@@ -581,14 +566,14 @@ namespace maskx.DurableTask.SQLServer
               newOrchestrationRuntimeState.ExecutionStartedEvent == null ||
               newOrchestrationRuntimeState.OrchestrationStatus != OrchestrationStatus.Running)
             {
-                await this.taskSessionManager.CompleteSession(workItem.InstanceId, null);
+                await this.sessionManager.CompleteSessionAsync(workItem.InstanceId, null);
                 return true;
             }
-            await this.taskSessionManager.CompleteSession(workItem.InstanceId, SerializeOrchestrationRuntimeState(newOrchestrationRuntimeState));
+            await this.sessionManager.CompleteSessionAsync(workItem.InstanceId, SerializeOrchestrationRuntimeState(newOrchestrationRuntimeState));
             return true;
         }
 
-        private async Task CommitState(TaskSession session)
+        private async Task CommitState(SQLServerOrchestrationSession session)
         {
             //TODO: ProcessTrackingWorkItemAsync
             var t = new TrackingWorkItem
@@ -762,7 +747,7 @@ namespace maskx.DurableTask.SQLServer
             return new TrackingWorkItem
             {
                 InstanceId = runtimeState.OrchestrationInstance.InstanceId,
-                LockedUntilUtc = DateTime.Now,
+                LockedUntilUtc = DateTime.UtcNow,
                 NewMessages = newMessages,
                 SessionInstance = sessionState
             };

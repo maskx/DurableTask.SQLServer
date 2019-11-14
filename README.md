@@ -1,15 +1,29 @@
 # DurableTask.SQLServer
-DurableTask.SQLServer
+
 
 * No BolbStore
-* 
+* Not support context.CreateTimer
 
-## Rodamap
+## TODO:
+
+### TaskSessionManager
+
+* support database access retry when exception
+* Implement AbandonSessionAsync Method
+* AcceptSessionAsync 
+  * need fetch timeout session -- **NEED TEST**
+  * support receiveTimeout
+  * support retry when no session retrieved
+
+
+### PeekLockQueue
+
+* save message in database
+
+
+## Roadmap
 
 ### SQLServerOrchestrationService
-1. InMemory Queue ( reference DurableTask.Emulator )
-2. Persistence in SqlServer
-3. Multiple TaskOrchestrationDispatcher
 
 ### SQLServerInstanceStore
 

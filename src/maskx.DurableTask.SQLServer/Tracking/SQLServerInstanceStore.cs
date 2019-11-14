@@ -155,13 +155,13 @@ namespace maskx.DurableTask.SQLServer.Tracking
                     state.LastUpdatedTime = reader.GetValue<DateTime>("LastUpdatedTime");
                     state.Name = reader.GetValue<string>("Name");
 
-                    state.OrchestrationInstance = SQLSerializer.DeserializeJson<OrchestrationInstance>(reader.GetValue<string>("OrchestrationInstance"));
+                    state.OrchestrationInstance = dataConverter.Deserialize<OrchestrationInstance>(reader.GetValue<string>("OrchestrationInstance"));
                     state.OrchestrationStatus = reader.GetValue<OrchestrationStatus>("OrchestrationStatus");
                     state.Output = reader.GetValue<string>("Output");
-                    state.ParentInstance = SQLSerializer.DeserializeJson<ParentInstance>(reader.GetValue<string>("ParentInstance"));
+                    state.ParentInstance = dataConverter.Deserialize<ParentInstance>(reader.GetValue<string>("ParentInstance"));
                     state.Size = reader.GetValue<long>("Size");
                     state.Status = reader.GetValue<string>("Status");
-                    state.Tags = SQLSerializer.DeserializeJson<Dictionary<string, string>>(reader.GetValue<string>("Tags"));
+                    state.Tags = dataConverter.Deserialize<Dictionary<string, string>>(reader.GetValue<string>("Tags"));
                     state.Version = reader.GetValue<string>("Version");
 
                     jumpStartEntity.State = state;
@@ -419,13 +419,13 @@ namespace maskx.DurableTask.SQLServer.Tracking
                             Input = state.Input,
                             LastUpdatedTime = state.LastUpdatedTime,
                             Name = state.Name,
-                            OrchestrationInstance = SQLSerializer.SerializeToJson(state.OrchestrationInstance),
+                            OrchestrationInstance = dataConverter.Serialize(state.OrchestrationInstance),
                             OrchestrationStatus = state.OrchestrationStatus.ToString(),
                             Output = state.Output,
-                            ParentInstance = SQLSerializer.SerializeToJson(state.ParentInstance),
+                            ParentInstance = dataConverter.Serialize(state.ParentInstance),
                             Size = state.Size,
                             Status = state.Status,
-                            Tags = SQLSerializer.SerializeToJson(state.Tags),
+                            Tags = dataConverter.Serialize(state.Tags),
                             Version = state.Version
                         });
                     }

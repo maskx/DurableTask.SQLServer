@@ -109,11 +109,6 @@ namespace maskx.DurableTask.SQLServer.Tests
             });
         }
 
-        public static TaskHubClient CreateTaskHubClientNoCompression()
-        {
-            return new TaskHubClient(CreateOrchestrationServiceClient(null));
-        }
-
         public static TaskHubClient CreateTaskHubClient()
         {
             return new TaskHubClient(CreateOrchestrationServiceClient(CreateTestClientSettings()));
@@ -121,7 +116,7 @@ namespace maskx.DurableTask.SQLServer.Tests
 
         public static TaskHubWorker CreateTaskHubNoCompression()
         {
-            return new TaskHubWorker(CreateOrchestrationServiceWorker(null, TimeSpan.FromMinutes(1)));
+            return new TaskHubWorker(CreateOrchestrationServiceWorker(CreateTestClientSettings(), TimeSpan.FromMinutes(1)));
         }
 
         public static TaskHubWorker CreateTaskHubLegacyCompression()
@@ -159,7 +154,7 @@ namespace maskx.DurableTask.SQLServer.Tests
                 throw new ArgumentException("instance");
             }
 
-            var sleepForSeconds = 2;
+            var sleepForSeconds = 5;
 
             while (timeoutSeconds > 0)
             {
@@ -175,6 +170,8 @@ namespace maskx.DurableTask.SQLServer.Tests
 
                 if (state == null)
                 {
+                    await Task.Delay(sleepForSeconds * 1000);
+                    timeoutSeconds -= sleepForSeconds;
                     continue;
                     //  throw new ArgumentException("OrchestrationState is expected but NULL value returned");
                 }

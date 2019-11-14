@@ -7,8 +7,9 @@ namespace maskx.DurableTask.SQLServer.Tests
 {
     public class TaskHubClientTests
     {
-        TaskHubClient client;
-        TaskHubWorker taskHub;
+        private TaskHubClient client;
+        private TaskHubWorker taskHub;
+
         [Fact]
         public async Task TestOrchestrationCount()
         {
@@ -20,7 +21,7 @@ namespace maskx.DurableTask.SQLServer.Tests
             await this.client.CreateOrchestrationInstanceAsync("foo", "1.0", null);
             await this.client.CreateOrchestrationInstanceAsync("foo1", "1.0", null);
             await this.client.CreateOrchestrationInstanceAsync("foo2", "1.0", null);
-            Assert.True(service.GetPendingOrchestrationsCount() == 3);
+            Assert.Equal(3, service.GetPendingOrchestrationsCount().Result);
             await service.DeleteAsync();
         }
     }

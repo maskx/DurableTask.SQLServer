@@ -32,9 +32,19 @@ namespace maskx.DurableTask.SQLServer.Settings
         public bool JumpStartEnabled { get; set; } = false;
 
         /// <summary>
-        /// default is false. if enabled,will auto create and drop table when Service start and stop
+        /// Orchestration session locked time
         /// </summary>
-        public bool EnableDatabaseMaintenance { get; set; } = false;
+        public double SessionLockedSeconds { get; set; } = 300;
+
+        /// <summary>
+        /// Message locked time
+        /// </summary>
+        public double MessageLockedSeconds { get; set; } = 300;
+
+        /// <summary>
+        /// when no data fetch from SQL Server, the system will sleep the setting time before next try
+        /// </summary>
+        public int IdleSleepSeconds { get; set; } = 1;
 
         /// <summary>
         ///     Maximum number of times the task orchestration dispatcher will try to

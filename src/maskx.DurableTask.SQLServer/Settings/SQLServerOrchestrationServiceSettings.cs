@@ -47,6 +47,11 @@ namespace maskx.DurableTask.SQLServer.Settings
         public int IdleSleepSeconds { get; set; } = 1;
 
         /// <summary>
+        /// the schema name of the SQLServerOrchestratorService tables
+        /// </summary>
+        public string SchemaName { get; set; } = "dbo";
+
+        /// <summary>
         ///     Maximum number of times the task orchestration dispatcher will try to
         ///     process an orchestration message before giving up
         /// </summary>

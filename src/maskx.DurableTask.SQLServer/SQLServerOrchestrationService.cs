@@ -30,7 +30,6 @@ namespace maskx.DurableTask.SQLServer
         private const int StatusPollingIntervalInSeconds = 2;
         private Dictionary<string, byte[]> sessionState;
         private readonly int MaxConcurrentWorkItems = 20;
-        private readonly List<TaskMessage> timerMessages;
 
         private readonly CancellationTokenSource cancellationTokenSource;
 
@@ -51,6 +50,7 @@ namespace maskx.DurableTask.SQLServer
             this.instanceStore = instanceStore;
             SQLServerSettings sqlSettings = new SQLServerSettings()
             {
+                SchemaName = settings.SchemaName,
                 HubName = hubName,
                 MessageLockedSeconds = settings.MessageLockedSeconds,
                 SessionLockedSeconds = settings.SessionLockedSeconds,
@@ -60,8 +60,6 @@ namespace maskx.DurableTask.SQLServer
             this.messageMagager = new MessageMagager(sqlSettings);
 
             this.sessionState = new Dictionary<string, byte[]>();
-
-            this.timerMessages = new List<TaskMessage>();
 
             this.cancellationTokenSource = new CancellationTokenSource();
         }
@@ -202,7 +200,7 @@ namespace maskx.DurableTask.SQLServer
             {
                 return;
             }
-            await this.sessionManager.SendMessageBatchAsync(messages);
+            await this.sessionManager.SendMessageAsync(messages);
         }
 
         /// <inheritdoc />
@@ -345,31 +343,22 @@ namespace maskx.DurableTask.SQLServer
             }
             if (await this.TrySetSessionStateAsync(workItem, newOrchestrationRuntimeState, runtimeState))
             {
-                if (outboundMessages != null)
+                if (outboundMessages?.Count > 0)
                 {
-                    foreach (TaskMessage m in outboundMessages)
-                    {
-                        await this.messageMagager.SendMessageAsync(m);
-                    }
+                    await this.messageMagager.SendMessageAsync(outboundMessages.ToArray());
                 }
 
-                if (workItemTimerMessages != null)
+                if (workItemTimerMessages?.Count > 0)
                 {
-                    lock (this.timerLock)
-                    {
-                        foreach (TaskMessage m in workItemTimerMessages)
-                        {
-                            this.timerMessages.Add(m);
-                        }
-                    }
+                    await this.sessionManager.SendMessageAsync(workItemTimerMessages.ToArray());
                 }
                 if (orchestratorMessages?.Count > 0)
                 {
-                    await this.sessionManager.SendMessageBatchAsync(orchestratorMessages.ToArray());
+                    await this.sessionManager.SendMessageAsync(orchestratorMessages.ToArray());
                 }
                 if (continuedAsNewMessage != null)
                 {
-                    await this.sessionManager.SendMessageBatchAsync(continuedAsNewMessage);
+                    await this.sessionManager.SendMessageAsync(continuedAsNewMessage);
                 }
                 if (this.instanceStore != null)
                 {
@@ -491,7 +480,7 @@ namespace maskx.DurableTask.SQLServer
         public async Task CompleteTaskActivityWorkItemAsync(TaskActivityWorkItem workItem, TaskMessage responseMessage)
         {
             var t1 = this.messageMagager.CompleteMessageAsync(workItem.TaskMessage);
-            var t2 = this.sessionManager.SendMessageBatchAsync(responseMessage);
+            var t2 = this.sessionManager.SendMessageAsync(responseMessage);
             await Task.WhenAll(t1, t2);
         }
 

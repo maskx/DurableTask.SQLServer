@@ -41,7 +41,7 @@ namespace maskx.DurableTask.SQLServer.Tests
             Assert.Equal(OrchestrationStatus.Completed, runtimeState.OrchestrationStatus);
             Assert.Equal(runtimeState.OrchestrationInstance.InstanceId, id.InstanceId);
             Assert.Equal(runtimeState.OrchestrationInstance.ExecutionId, id.ExecutionId);
-            Assert.Equal("maskx.DurableTask.SQLServer.Tests.scenario.InstanceStoreTestOrchestration", runtimeState.Name);
+            Assert.Equal("maskx.DurableTask.SQLServer.Tests.OrchestrationHubTableClientTests+InstanceStoreTestOrchestration", runtimeState.Name);
             Assert.Equal(runtimeState.Version, string.Empty);
             Assert.Equal("\"DONT_THROW\"", runtimeState.Input);
             Assert.Equal("\"Spartacus\"", runtimeState.Output);

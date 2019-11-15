@@ -75,7 +75,7 @@ and LockedUntilUtc<getutcdate()
             return t;
         }
 
-        public async Task SendMessageAsync(TaskMessage message)
+        public async Task SendMessageAsync(params TaskMessage[] message)
         {
             string sql = $@"
 INSERT INTO {this.settings.MessageTableName}
@@ -86,17 +86,20 @@ VALUES
             using (var con = await this.settings.GetDatabaseConnection())
             {
                 var cmd = con.CreateCommand();
-                cmd.AddStatement(sql, new
+                foreach (var msg in message)
                 {
-                    ExecutionId = message.OrchestrationInstance.ExecutionId,
-                    InstanceId = message.OrchestrationInstance.InstanceId,
-                    LockedUntilUtc = DBNull.Value,
-                    Status = "Pending",
-                    SequenceNumber = message.SequenceNumber,
-                    OrchestrationInstance = dataConverter.Serialize(message.OrchestrationInstance),
-                    Event = dataConverter.Serialize(message.Event),
-                    ExtensionData = dataConverter.Serialize(message.ExtensionData)
-                });
+                    cmd.AddStatement(sql, new
+                    {
+                        ExecutionId = msg.OrchestrationInstance.ExecutionId,
+                        InstanceId = msg.OrchestrationInstance.InstanceId,
+                        LockedUntilUtc = DBNull.Value,
+                        Status = "Pending",
+                        SequenceNumber = msg.Event.EventId,
+                        OrchestrationInstance = dataConverter.Serialize(msg.OrchestrationInstance),
+                        Event = dataConverter.Serialize(msg.Event),
+                        ExtensionData = dataConverter.Serialize(msg.ExtensionData)
+                    });
+                }
                 await con.OpenAsync();
                 await cmd.ExecuteNonQueryAsync();
             }

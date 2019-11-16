@@ -30,5 +30,6 @@ just copy from https://github.com/Azure/durabletask
 
 * GetOrchestrationStateAsync modified
   * check value is null
+  * when OrchestrationState Table have no recorder, should check JumpStart table
 
 ### SQLServerBlobStore

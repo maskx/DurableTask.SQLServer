@@ -551,6 +551,8 @@ namespace maskx.DurableTask.SQLServer
 
         private async Task ProcessTrackingWorkItemAsync(TrackingWorkItem workItem)
         {
+            if (workItem == null)
+                return;
             var historyEntities = new List<OrchestrationWorkItemInstanceEntity>();
             var stateEntities = new List<OrchestrationStateInstanceEntity>();
 
@@ -688,6 +690,10 @@ namespace maskx.DurableTask.SQLServer
 
         private async Task<TrackingWorkItem> CreateTrackingMessagesAsync(OrchestrationRuntimeState runtimeState, long sequenceNumber)
         {
+            if (string.IsNullOrWhiteSpace(runtimeState?.OrchestrationInstance?.InstanceId))
+            {
+                return null;
+            }
             List<TaskMessage> newMessages = new List<TaskMessage>();
             int historyEventIndex = runtimeState.Events.Count - runtimeState.NewEvents.Count;
             foreach (HistoryEvent he in runtimeState.NewEvents)
@@ -699,13 +705,19 @@ namespace maskx.DurableTask.SQLServer
                     OrchestrationInstance = runtimeState.OrchestrationInstance
                 });
             }
-
-            newMessages.Add(new TaskMessage
+            try
             {
-                Event = new HistoryStateEvent(-1, Utils.BuildOrchestrationState(runtimeState)),
-                SequenceNumber = 999,
-                OrchestrationInstance = runtimeState.OrchestrationInstance
-            });
+                newMessages.Add(new TaskMessage
+                {
+                    Event = new HistoryStateEvent(-1, Utils.BuildOrchestrationState(runtimeState)),
+                    SequenceNumber = 999,
+                    OrchestrationInstance = runtimeState.OrchestrationInstance
+                });
+            }
+            catch (Exception ex)
+            {
+                throw ex;
+            }
             //todo: LockedUntilUtc need to be set
             return new TrackingWorkItem
             {

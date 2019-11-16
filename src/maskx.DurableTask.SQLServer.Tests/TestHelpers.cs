@@ -168,12 +168,12 @@ namespace maskx.DurableTask.SQLServer.Tests
                     state = await taskHubClient.GetOrchestrationStateAsync(instance.InstanceId);
                 }
 
-                if (state == null)
+                if (waitForCompletion && state == null)
                 {
                     await Task.Delay(sleepForSeconds * 1000);
                     timeoutSeconds -= sleepForSeconds;
                     continue;
-                    //  throw new ArgumentException("OrchestrationState is expected but NULL value returned");
+                    // throw new ArgumentException("OrchestrationState is expected but NULL value returned");
                 }
 
                 if (waitForCompletion &&

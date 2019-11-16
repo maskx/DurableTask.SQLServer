@@ -116,7 +116,6 @@ namespace maskx.DurableTask.SQLServer
         /// <inheritdoc />
         public async Task StartAsync()
         {
-            //await TimerMessageSchedulerAsync();
         }
 
         /// <inheritdoc />
@@ -174,6 +173,10 @@ namespace maskx.DurableTask.SQLServer
                 if (this.settings.JumpStartEnabled)
                 {
                     //TODO: await UpdateJumpStartStoreAsync(creationMessage);
+                }
+                else
+                {
+                    await UpdateInstanceStoreAsync(creationMessage.Event as ExecutionStartedEvent, creationMessage.SequenceNumber);
                 }
             }
             try

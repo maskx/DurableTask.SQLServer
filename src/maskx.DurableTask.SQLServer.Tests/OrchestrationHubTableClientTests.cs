@@ -1,4 +1,5 @@
 ﻿using DurableTask.Core;
+using Microsoft.VisualStudio.TestPlatform.PlatformAbstractions.Interfaces;
 using System;
 using System.Threading.Tasks;
 using Xunit;
@@ -117,7 +118,7 @@ namespace maskx.DurableTask.SQLServer.Tests
             Assert.Equal(OrchestrationStatus.Pending, runtimeState.OrchestrationStatus);
             Assert.Equal(id.InstanceId, runtimeState.OrchestrationInstance.InstanceId);
             Assert.Equal(id.ExecutionId, runtimeState.OrchestrationInstance.ExecutionId);
-            Assert.Equal("DurableTask.ServiceBus.Tests.OrchestrationHubTableClientTests+InstanceStoreTestOrchestration", runtimeState.Name);
+            Assert.Equal("maskx.DurableTask.SQLServer.Tests.OrchestrationHubTableClientTests+InstanceStoreTestOrchestration", runtimeState.Name);
             Assert.Equal(runtimeState.Version, string.Empty);
             Assert.Equal("\"WAIT\"", runtimeState.Input);
             Assert.Null(runtimeState.Output);

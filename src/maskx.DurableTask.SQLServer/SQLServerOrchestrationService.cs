@@ -355,11 +355,6 @@ namespace maskx.DurableTask.SQLServer
                     {
                         var trackingMessages1 = await CreateTrackingMessagesAsync(newOrchestrationRuntimeState, 1);
                         await ProcessTrackingWorkItemAsync(trackingMessages1);
-                        //TODO:
-                        Debugger.Break();
-
-                        var oldState = Utils.BuildOrchestrationState(workItem.OrchestrationRuntimeState);
-                        await CommitState(null);
                     }
 
                     if (state != null)
@@ -549,19 +544,6 @@ namespace maskx.DurableTask.SQLServer
             }
             await this.sessionManager.CompleteSessionAsync(workItem.InstanceId, SerializeOrchestrationRuntimeState(newOrchestrationRuntimeState));
             return true;
-        }
-
-        private async Task CommitState(SQLServerOrchestrationSession session)
-        {
-            //TODO: ProcessTrackingWorkItemAsync
-            var t = new TrackingWorkItem
-            {
-                InstanceId = session.Id,
-                LockedUntilUtc = session.LockedUntilUtc,
-                NewMessages = session.Messages,
-                SessionInstance = session
-            };
-            await ProcessTrackingWorkItemAsync(t);
         }
 
         private async Task ProcessTrackingWorkItemAsync(TrackingWorkItem workItem)

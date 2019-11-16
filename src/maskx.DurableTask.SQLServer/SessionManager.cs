@@ -248,12 +248,6 @@ where InstanceId=@InstanceId
 
         public async Task<SQLServerOrchestrationSession> AcceptSessionAsync(TimeSpan receiveTimeout, CancellationToken cancellationToken)
         {
-            //SQLServerOrchestrationSession t = await GetSessionAsync(GetPendingSessionSQL, cancellationToken);
-            //if (t == null)
-            //{
-            //    t = await GetSessionAsync(this.GetTimeoutSessionSQL, cancellationToken);
-            //}
-            //return t;
             SQLServerOrchestrationSession t = null;
             using (var con = await this.settings.GetDatabaseConnection())
             {
@@ -285,13 +279,16 @@ where InstanceId=@InstanceId
                     }
                     while (reader.Read())
                     {
-                        t.Messages.Add(new TaskMessage()
+                        var m = new TaskMessage()
                         {
                             SequenceNumber = reader.GetInt64(0),
                             OrchestrationInstance = reader.IsDBNull(1) ? null : dataConverter.Deserialize<OrchestrationInstance>(reader.GetString(1)),
                             Event = reader.IsDBNull(2) ? null : JsonConvert.DeserializeObject<HistoryEvent>(reader.GetString(2), new JsonSerializerSettings { TypeNameHandling = TypeNameHandling.Auto }),
                             ExtensionData = reader.IsDBNull(3) ? null : dataConverter.Deserialize<ExtensionDataObject>(reader.GetString(3))
-                        });
+                        };
+                        if (string.IsNullOrEmpty(m.OrchestrationInstance.ExecutionId))
+                            m.OrchestrationInstance.ExecutionId = string.Empty;
+                        t.Messages.Add(m);
                     }
                 }
             }
@@ -379,9 +376,7 @@ WHERE InstanceId=@InstanceId
             return dt;
         }
 
-        private const string GetPendingOrchestrationsCountSQL = @"
-return select count(0) from {0} where [Status]='Pending'
-";
+        private const string GetPendingOrchestrationsCountSQL = @"return select count(0) from {0} where [Status]='Pending'";
 
         public async Task DeleteSessionManagerAsync()
         {
@@ -429,7 +424,7 @@ IF(OBJECT_ID(@table) IS NULL)
 BEGIN
     CREATE TABLE {settings.SessionMessageTableName} (
 	    [InstanceId] [nvarchar](50) NOT NULL,
-	    [ExecutionId] [nvarchar](50) NOT NULL,
+	    [ExecutionId] [nvarchar](50)  NULL,
 	    [SequenceNumber] [bigint] NOT NULL,
 	    [FireAt] [datetime2](7) NULL,
 	    [LockedUntilUtc] [datetime2](7) NULL,

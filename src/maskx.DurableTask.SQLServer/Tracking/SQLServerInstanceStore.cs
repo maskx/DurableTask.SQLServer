@@ -250,7 +250,9 @@ namespace maskx.DurableTask.SQLServer.Tracking
 
                 await connection.OpenAsync();
                 var value = await command.ExecuteScalarAsync();
-
+                // maskx added
+                if (value == null)
+                    return null;
                 return new OrchestrationStateInstanceEntity { State = dataConverter.Deserialize<OrchestrationState>(value.ToString()) };
             }
         }

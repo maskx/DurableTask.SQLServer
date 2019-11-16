@@ -200,7 +200,7 @@ namespace maskx.DurableTask.SQLServer.Tests
                 .AddTaskActivities(typeof(GetUserTask2), typeof(SendGreetingTask))
                 .StartAsync();
 
-            OrchestrationInstance id = await this.client.CreateOrchestrationInstanceAsync(typeof(GreetingsOrchestration2), 20);
+            OrchestrationInstance id = await this.client.CreateOrchestrationInstanceAsync(typeof(GreetingsOrchestration2), 40);
 
             bool isCompleted = await TestHelpers.WaitForInstanceAsync(this.client, id, 60);
             Assert.True(isCompleted, TestHelpers.GetInstanceNotCompletedMessage(this.client, id, 60));

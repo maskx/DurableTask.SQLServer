@@ -1,4 +1,4 @@
-﻿CREATE TABLE [dbo].[DTF_TaskMessage](
+﻿CREATE TABLE [dbo].[DTF_SessionMessage](
 	[InstanceId] [nvarchar](50) NOT NULL,
 	[ExecutionId] [nvarchar](50) NOT NULL,
 	[SequenceNumber] [bigint] NOT NULL,
@@ -7,7 +7,7 @@
 	[Status] [nvarchar](50) NULL,
 	[Event] [nvarchar](max) NULL,
 	[ExtensionData] [nvarchar](max) NULL,
- CONSTRAINT [PK_DTF_TaskMessage_1] PRIMARY KEY CLUSTERED 
+ CONSTRAINT [PK_DTF_SessionMessage_1] PRIMARY KEY CLUSTERED 
 (
 	[InstanceId] ASC,
 	[ExecutionId] ASC,

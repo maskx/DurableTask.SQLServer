@@ -39,6 +39,7 @@ namespace maskx.DurableTask.SQLServer
                 {
                     t = new TaskActivityWorkItem
                     {
+                        Id = reader["Id"].ToString(),
                         LockedUntilUtc = reader.GetDateTime(4),
                         TaskMessage = new TaskMessage
                         {
@@ -59,13 +60,13 @@ namespace maskx.DurableTask.SQLServer
             string sqlGetPending = $@"
 update top(1) {settings.MessageTableName}
 set [Status]='locked',LockedUntilUtc=@LockedUntilUtc
-output INSERTED.SequenceNumber,INSERTED.OrchestrationInstance,INSERTED.[Event],INSERTED.ExtensionData,INSERTED.LockedUntilUtc
+output INSERTED.SequenceNumber,INSERTED.OrchestrationInstance,INSERTED.[Event],INSERTED.ExtensionData,INSERTED.LockedUntilUtc,INSERTED.Id
 where [Status]='Pending'
 ";
             string sqlGetTimeout = $@"
 update top(1) {settings.MessageTableName}
 set [Status]='locked',LockedUntilUtc=@LockedUntilUtc
-output INSERTED.SequenceNumber,INSERTED.OrchestrationInstance,INSERTED.[Event],INSERTED.ExtensionData
+output INSERTED.SequenceNumber,INSERTED.OrchestrationInstance,INSERTED.[Event],INSERTED.ExtensionData,INSERTED.Id
 where [Status]='Locked'
 and LockedUntilUtc<getutcdate()
 ";
@@ -79,9 +80,9 @@ and LockedUntilUtc<getutcdate()
         {
             string sql = $@"
 INSERT INTO {this.settings.MessageTableName}
-([InstanceId],[ExecutionId],[SequenceNumber],[OrchestrationInstance], [LockedUntilUtc],[Status],[Event],[ExtensionData])
+(Id,[InstanceId],[ExecutionId],[SequenceNumber],[OrchestrationInstance], [LockedUntilUtc],[Status],[Event],[ExtensionData])
 VALUES
-( @InstanceId,@ExecutionId,@SequenceNumber,@OrchestrationInstance,@LockedUntilUtc,@Status,@Event,@ExtensionData);
+(newid(),@InstanceId,@ExecutionId,@SequenceNumber,@OrchestrationInstance,@LockedUntilUtc,@Status,@Event,@ExtensionData);
 ";
             using (var con = await this.settings.GetDatabaseConnection())
             {
@@ -94,7 +95,7 @@ VALUES
                         InstanceId = msg.OrchestrationInstance.InstanceId,
                         LockedUntilUtc = DBNull.Value,
                         Status = "Pending",
-                        SequenceNumber = msg.Event.EventId,
+                        SequenceNumber = msg.SequenceNumber,
                         OrchestrationInstance = dataConverter.Serialize(msg.OrchestrationInstance),
                         Event = dataConverter.Serialize(msg.Event),
                         ExtensionData = dataConverter.Serialize(msg.ExtensionData)
@@ -105,45 +106,34 @@ VALUES
             }
         }
 
-        public async Task CompleteMessageAsync(TaskMessage message)
+        public async Task CompleteMessageAsync(TaskActivityWorkItem workItem)
         {
-            string sql = $@"
-DELETE {this.settings.MessageTableName}
-WHERE InstanceId=@InstanceId
-AND ExecutionId=@ExecutionId
-AND SequenceNumber=@SequenceNumber
-";
+            string sql = $"DELETE {this.settings.MessageTableName} WHERE Id=@Id";
             using (var con = await this.settings.GetDatabaseConnection())
             {
                 var cmd = con.CreateCommand();
                 cmd.AddStatement(sql, new
                 {
-                    ExecutionId = message.OrchestrationInstance.ExecutionId,
-                    InstanceId = message.OrchestrationInstance.InstanceId,
-                    SequenceNumber = message.SequenceNumber,
+                    Id = workItem.Id
                 });
                 await con.OpenAsync();
                 await cmd.ExecuteNonQueryAsync();
             }
         }
 
-        public async Task AbandonMessageAsync(TaskMessage message)
+        public async Task AbandonMessageAsync(TaskActivityWorkItem workItem)
         {
             string sql = $@"
 UPDATE {this.settings.MessageTableName}
 SET [Status]=N'Abandon',LockedUntilUtc=@LockedUntilUtc
-WHERE InstanceId=@InstanceId
-AND ExecutionId=@ExecutionId
-AND SequenceNumber=@SequenceNumber
+WHERE Id=@Id
 ";
             using (var con = await this.settings.GetDatabaseConnection())
             {
                 var cmd = con.CreateCommand();
                 cmd.AddStatement(sql, new
                 {
-                    ExecutionId = message.OrchestrationInstance.ExecutionId,
-                    InstanceId = message.OrchestrationInstance.InstanceId,
-                    SequenceNumber = message.SequenceNumber,
+                    Id = workItem.Id,
                     LockedUntilUtc = DateTime.MaxValue
                 });
                 await con.OpenAsync();
@@ -151,14 +141,12 @@ AND SequenceNumber=@SequenceNumber
             }
         }
 
-        public async Task<DateTime> RenewLock(TaskMessage message)
+        public async Task<DateTime> RenewLock(TaskActivityWorkItem workItem)
         {
             string sql = $@"
 UPDATE {this.settings.MessageTableName}
 SET LockedUntilUtc=@LockedUntilUtc
-WHERE InstanceId=@InstanceId
-AND ExecutionId=@ExecutionId
-AND SequenceNumber=@SequenceNumber
+WHERE Id=@Id
 ";
             DateTime dt = DateTime.UtcNow.AddSeconds(this.settings.MessageLockedSeconds);
             using (var con = await this.settings.GetDatabaseConnection())
@@ -166,9 +154,7 @@ AND SequenceNumber=@SequenceNumber
                 var cmd = con.CreateCommand();
                 cmd.AddStatement(sql, new
                 {
-                    ExecutionId = message.OrchestrationInstance.ExecutionId,
-                    InstanceId = message.OrchestrationInstance.InstanceId,
-                    SequenceNumber = message.SequenceNumber,
+                    Id = workItem.Id,
                     LockedUntilUtc = dt
                 });
                 await con.OpenAsync();
@@ -205,6 +191,7 @@ AND SequenceNumber=@SequenceNumber
 IF(OBJECT_ID(@table) IS NULL)
 BEGIN
     CREATE TABLE {settings.MessageTableName} (
+        [Id] [nvarchar](50) NOT NULL,
 	    [InstanceId] [nvarchar](50) NOT NULL,
 	    [ExecutionId] [nvarchar](50) NOT NULL,
 	    [SequenceNumber] [bigint] NOT NULL,
@@ -215,9 +202,7 @@ BEGIN
 	    [ExtensionData] [nvarchar](max) NULL,
      CONSTRAINT [PK_{settings.SchemaName}_{settings.HubName}_{SQLServerSettings.MessageTable}] PRIMARY KEY CLUSTERED
     (
-	    [InstanceId] ASC,
-	    [ExecutionId] ASC,
-	    [SequenceNumber] ASC
+	    [Id] ASC
     )WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON) ON [PRIMARY]
     ) ON [PRIMARY] TEXTIMAGE_ON [PRIMARY]
 END", new { table = settings.MessageTableName });

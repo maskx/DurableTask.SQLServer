@@ -5,10 +5,7 @@ using maskx.DurableTask.SQLServer.Settings;
 using maskx.DurableTask.SQLServer.Tracking;
 using Newtonsoft.Json;
 using System;
-using System.Collections.Generic;
-using System.Data.SqlClient;
 using System.Runtime.Serialization;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -35,18 +32,11 @@ namespace maskx.DurableTask.SQLServer
 MERGE {0} TARGET
 USING (VALUES (@InstanceId)) AS SOURCE ([InstanceId])
 ON [Target].InstanceId = [Source].InstanceId
-WHEN NOT MATCHED THEN INSERT ([InstanceId],[LockedUntilUtc],[Status],[FireAt]) VALUES (@InstanceId,@LockedUntilUtc,@Status,@FireAt)
-WHEN MATCHED THEN UPDATE SET [FireAt]=IIF(FireAt<@FireAt,FireAt,@FireAt);
-
-MERGE {1} TARGET
-USING (VALUES(@InstanceId,@ExecutionId,@SequenceNumber)) AS SOURCE ([InstanceId],[ExecutionId],[SequenceNumber])
-ON [Target].InstanceId = [Source].InstanceId AND [Target].ExecutionId = [Source].ExecutionId AND [Target].SequenceNumber = [Source].SequenceNumber
-WHEN NOT MATCHED THEN
-    INSERT
+WHEN NOT MATCHED THEN INSERT ([InstanceId],[LockedUntilUtc],[Status]) VALUES (@InstanceId,@LockedUntilUtc,@Status);
+    INSERT INTO {1}
     ([InstanceId],[ExecutionId],[SequenceNumber],[OrchestrationInstance],[FireAt], [LockedUntilUtc],[Status],[Event],[ExtensionData])
     VALUES
-    ( @InstanceId,@ExecutionId,@SequenceNumber,@OrchestrationInstance,@FireAt,@LockedUntilUtc,@Status,@Event,@ExtensionData)
-WHEN MATCHED THEN UPDATE SET [OrchestrationInstance]=@OrchestrationInstance,FireAt=@FireAt,LockedUntilUtc=@LockedUntilUtc,Status=@Status,Event=@Event,ExtensionData=@ExtensionData;
+    ( @InstanceId,@ExecutionId,@SequenceNumber,@OrchestrationInstance,@FireAt,@LockedUntilUtc,@Status,@Event,@ExtensionData);
 ";
 
         private const string GetPendingSessionSQL = @"
@@ -91,7 +81,6 @@ where InstanceId=@InstanceId and Status='Locked'
 update {0}
 set SessionState=@SessionState,[Status]='Pending',LockedUntilUtc=@LockedUntilUtc
 where InstanceId=@InstanceId
-
 ";
 
         private const string AcceptSessionSql = @"
@@ -100,7 +89,18 @@ declare @InstanceId nvarchar(50)
 update top(1) {0}
 set @InstanceId=InstanceId,[Status]='Locked',LockedUntilUtc=@LockedUntilUtc
 output INSERTED.InstanceId,INSERTED.LockedUntilUtc,INSERTED.[Status],INSERTED.SessionState
-where [Status]='Pending' AND FireAt<=getutcdate()
+where [Status]='Pending'
+and (select min(FireAt) from {1} where {0}.InstanceId={1}.Instanceid and FireAt is not null) <=getutcdate()
+
+if @InstanceId is not null
+begin
+    update {1}
+    set [Status]='Locked',LockedUntilUtc=@LockedUntilUtc
+    output INSERTED.SequenceNumber,INSERTED.OrchestrationInstance,INSERTED.[Event],INSERTED.ExtensionData
+    where InstanceId=@InstanceId
+    and FireAt<=getutcdate()
+    return
+end
 
 if @InstanceId is null
 begin
@@ -109,7 +109,7 @@ begin
     output INSERTED.InstanceId,INSERTED.LockedUntilUtc,INSERTED.[Status],INSERTED.SessionState
     where [Status]='Pending'
     and FireAt is null
-    and (select count(0) from {1} where {1}.InstanceId={0}.InstanceId)>0
+    and (select count(0) from {1} where {1}.InstanceId={0}.InstanceId and FireAt is null)>0
 end
 
 if @InstanceId is null
@@ -121,10 +121,14 @@ begin
     and LockedUntilUtc<getutcdate()
 end
 
-update {1}
-set [Status]='Locked',LockedUntilUtc=@LockedUntilUtc
-output INSERTED.SequenceNumber,INSERTED.OrchestrationInstance,INSERTED.[Event],INSERTED.ExtensionData
-where InstanceId=@InstanceId
+if @InstanceId is not null
+begin
+    update {1}
+    set [Status]='Locked',LockedUntilUtc=@LockedUntilUtc
+    output INSERTED.SequenceNumber,INSERTED.OrchestrationInstance,INSERTED.[Event],INSERTED.ExtensionData
+    where InstanceId=@InstanceId
+    and FireAt is null
+end
 ";
 
         private const string SetSessionStateSql = @"
@@ -192,7 +196,7 @@ where InstanceId=@InstanceId
                         LockedUntilUtc = DBNull.Value,
                         Status = "Pending",
                         FireAt = GetFireTime(msg),
-                        SequenceNumber = msg.Event.EventId,
+                        SequenceNumber = msg.SequenceNumber,
                         OrchestrationInstance = dataConverter.Serialize(msg.OrchestrationInstance),
                         Event = dataConverter.Serialize(msg.Event),
                         ExtensionData = dataConverter.Serialize(msg.ExtensionData)
@@ -317,7 +321,7 @@ where InstanceId=@InstanceId
                     {
                         InstanceId = id,
                         SessionState = newState,
-                        LockedUntilUtc = DateTime.MinValue
+                        LockedUntilUtc = DBNull.Value
                     });
                 }
                 await con.OpenAsync();
@@ -427,18 +431,12 @@ BEGIN
 	    [InstanceId] [nvarchar](50) NOT NULL,
 	    [ExecutionId] [nvarchar](50) NOT NULL,
 	    [SequenceNumber] [bigint] NOT NULL,
-        [FireAt] [datetime2](7)  NULL,
-	    [LockedUntilUtc] [datetime2](7)  NULL,
+	    [FireAt] [datetime2](7) NULL,
+	    [LockedUntilUtc] [datetime2](7) NULL,
 	    [Status] [nvarchar](50) NOT NULL,
-        [OrchestrationInstance] [nvarchar](max) NULL,
+	    [OrchestrationInstance] [nvarchar](max) NULL,
 	    [Event] [nvarchar](max) NULL,
-	    [ExtensionData] [nvarchar](max) NULL,
-     CONSTRAINT [PK_{settings.SchemaName}_{settings.HubName}_{SQLServerSettings.SessionMessageTable}] PRIMARY KEY CLUSTERED
-    (
-	    [InstanceId] ASC,
-	    [ExecutionId] ASC,
-	    [SequenceNumber] ASC
-    )WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON) ON [PRIMARY]
+	    [ExtensionData] [nvarchar](max) NULL
     ) ON [PRIMARY] TEXTIMAGE_ON [PRIMARY]
 END", new { table = settings.SessionMessageTableName });
 

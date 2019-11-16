@@ -8,7 +8,6 @@ using DurableTask.Core.Tracking;
 using maskx.DurableTask.SQLServer.Settings;
 using Newtonsoft.Json;
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Data.Common;
 using System.Data.SqlClient;
@@ -291,7 +290,7 @@ namespace maskx.DurableTask.SQLServer
 
             if (taskSession == null)
             {
-                await Task.Delay(this.settings.IdleSleepSeconds * 1000,
+                await Task.Delay(this.settings.IdleSleepMilliSeconds,
                     CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, this.cancellationTokenSource.Token).Token);
                 return null;
             }
@@ -328,19 +327,7 @@ namespace maskx.DurableTask.SQLServer
             TaskMessage continuedAsNewMessage,
             OrchestrationState state)
         {
-            string newSessionState = string.Empty;
             OrchestrationRuntimeState runtimeState = workItem.OrchestrationRuntimeState;
-
-            if (newOrchestrationRuntimeState == null ||
-            newOrchestrationRuntimeState.ExecutionStartedEvent == null ||
-            newOrchestrationRuntimeState.OrchestrationStatus != OrchestrationStatus.Running)
-            {
-                newSessionState = string.Empty;
-            }
-            else
-            {
-                newSessionState = SerializeOrchestrationRuntimeState(newOrchestrationRuntimeState);
-            }
             if (await this.TrySetSessionStateAsync(workItem, newOrchestrationRuntimeState, runtimeState))
             {
                 if (outboundMessages?.Count > 0)
@@ -366,6 +353,8 @@ namespace maskx.DurableTask.SQLServer
                     await ProcessTrackingWorkItemAsync(trackingMessages);
                     if (workItem.OrchestrationRuntimeState != newOrchestrationRuntimeState)
                     {
+                        var trackingMessages1 = await CreateTrackingMessagesAsync(newOrchestrationRuntimeState, 1);
+                        await ProcessTrackingWorkItemAsync(trackingMessages1);
                         //TODO:
                         Debugger.Break();
 
@@ -462,7 +451,7 @@ namespace maskx.DurableTask.SQLServer
 
             if (workItem == null)
             {
-                await Task.Delay(this.settings.IdleSleepSeconds * 1000,
+                await Task.Delay(this.settings.IdleSleepMilliSeconds,
                     CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, this.cancellationTokenSource.Token).Token);
                 return null;
             }
@@ -473,13 +462,13 @@ namespace maskx.DurableTask.SQLServer
         /// <inheritdoc />
         public async Task AbandonTaskActivityWorkItemAsync(TaskActivityWorkItem workItem)
         {
-            await this.messageMagager.AbandonMessageAsync(workItem.TaskMessage);
+            await this.messageMagager.AbandonMessageAsync(workItem);
         }
 
         /// <inheritdoc />
         public async Task CompleteTaskActivityWorkItemAsync(TaskActivityWorkItem workItem, TaskMessage responseMessage)
         {
-            var t1 = this.messageMagager.CompleteMessageAsync(workItem.TaskMessage);
+            var t1 = this.messageMagager.CompleteMessageAsync(workItem);
             var t2 = this.sessionManager.SendMessageAsync(responseMessage);
             await Task.WhenAll(t1, t2);
         }
@@ -487,7 +476,7 @@ namespace maskx.DurableTask.SQLServer
         /// <inheritdoc />
         public async Task<TaskActivityWorkItem> RenewTaskActivityWorkItemLockAsync(TaskActivityWorkItem workItem)
         {
-            workItem.LockedUntilUtc = await this.messageMagager.RenewLock(workItem.TaskMessage);
+            workItem.LockedUntilUtc = await this.messageMagager.RenewLock(workItem);
             return workItem;
         }
 
@@ -729,7 +718,7 @@ namespace maskx.DurableTask.SQLServer
             newMessages.Add(new TaskMessage
             {
                 Event = new HistoryStateEvent(-1, Utils.BuildOrchestrationState(runtimeState)),
-                SequenceNumber = sequenceNumber,
+                SequenceNumber = 999,
                 OrchestrationInstance = runtimeState.OrchestrationInstance
             });
             //todo: LockedUntilUtc need to be set

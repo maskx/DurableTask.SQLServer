@@ -24,17 +24,15 @@ namespace maskx.DurableTask.SQLServer
 
         private readonly SessionManager sessionManager;
         private readonly MessageMagager messageMagager;
-        private SQLServerOrchestrationServiceSettings settings;
+        private readonly SQLServerOrchestrationServiceSettings settings;
 
         private const int StatusPollingIntervalInSeconds = 2;
-        private Dictionary<string, byte[]> sessionState;
+
         private readonly int MaxConcurrentWorkItems = 20;
 
         private readonly CancellationTokenSource cancellationTokenSource;
 
         private readonly IOrchestrationServiceInstanceStore instanceStore;
-
-        private readonly object timerLock = new object();
 
         /// <summary>
         ///     Creates a new instance of the LocalOrchestrationService with default settings
@@ -57,9 +55,6 @@ namespace maskx.DurableTask.SQLServer
             };
             this.sessionManager = new SessionManager(sqlSettings);
             this.messageMagager = new MessageMagager(sqlSettings);
-
-            this.sessionState = new Dictionary<string, byte[]>();
-
             this.cancellationTokenSource = new CancellationTokenSource();
         }
 
@@ -218,10 +213,17 @@ namespace maskx.DurableTask.SQLServer
                 throw new ArgumentException("instanceId");
             }
             double timeoutSeconds = timeout.TotalSeconds;
-
             while (!cancellationToken.IsCancellationRequested && timeoutSeconds > 0)
             {
-                OrchestrationState state = (await GetOrchestrationStateAsync(instanceId, false))?.FirstOrDefault();
+                OrchestrationState state;
+                if (string.IsNullOrEmpty(executionId))
+                {
+                    state = (await GetOrchestrationStateAsync(instanceId, false))?.FirstOrDefault();
+                }
+                else
+                {
+                    state = (await GetOrchestrationStateAsync(instanceId, executionId));
+                }
                 if (state == null
                     || (state.OrchestrationStatus == OrchestrationStatus.Running)
                     || (state.OrchestrationStatus == OrchestrationStatus.Pending))
@@ -352,19 +354,18 @@ namespace maskx.DurableTask.SQLServer
                 }
                 if (this.instanceStore != null)
                 {
-                    var trackingMessages = await CreateTrackingMessagesAsync(runtimeState, 1);
+                    var trackingMessages = CreateTrackingMessagesAsync(runtimeState, 1);
                     await ProcessTrackingWorkItemAsync(trackingMessages);
                     if (workItem.OrchestrationRuntimeState != newOrchestrationRuntimeState)
                     {
-                        var trackingMessages1 = await CreateTrackingMessagesAsync(newOrchestrationRuntimeState, 1);
+                        var trackingMessages1 = CreateTrackingMessagesAsync(newOrchestrationRuntimeState, 1);
                         await ProcessTrackingWorkItemAsync(trackingMessages1);
                     }
-
                     if (state != null)
                     {
                         var t = new TrackingWorkItem
                         {
-                            InstanceId = workItem.InstanceId,
+                            InstanceId = workItem.OrchestrationRuntimeState.OrchestrationInstance.InstanceId,
                             LockedUntilUtc = workItem.LockedUntilUtc,
                             NewMessages = workItem.NewMessages,
                             SessionInstance = workItem.Session
@@ -607,11 +608,7 @@ namespace maskx.DurableTask.SQLServer
             }
         }
 
-        private void TraceEntities<T>(
-     TraceEventType eventType,
-     string message,
-     IEnumerable<T> entities,
-     Func<int, string, T, string> traceGenerator)
+        private void TraceEntities<T>(TraceEventType eventType, string message, IEnumerable<T> entities, Func<int, string, T, string> traceGenerator)
         {
             var index = 0;
             foreach (T entry in entities)
@@ -688,7 +685,7 @@ namespace maskx.DurableTask.SQLServer
             return this.instanceStore.WriteEntitiesAsync(new[] { orchestrationStateEntity });
         }
 
-        private async Task<TrackingWorkItem> CreateTrackingMessagesAsync(OrchestrationRuntimeState runtimeState, long sequenceNumber)
+        private TrackingWorkItem CreateTrackingMessagesAsync(OrchestrationRuntimeState runtimeState, long sequenceNumber)
         {
             if (string.IsNullOrWhiteSpace(runtimeState?.OrchestrationInstance?.InstanceId))
             {
@@ -724,7 +721,7 @@ namespace maskx.DurableTask.SQLServer
                 InstanceId = runtimeState.OrchestrationInstance.InstanceId,
                 LockedUntilUtc = DateTime.UtcNow,
                 NewMessages = newMessages,
-                SessionInstance = sessionState
+                SessionInstance = null//TODO: need set to session
             };
         }
     }

@@ -1,15 +1,13 @@
 ﻿using DurableTask.Core;
+using DurableTask.Core.History;
 using DurableTask.Core.Serializing;
 using maskx.DurableTask.SQLServer.Settings;
+using maskx.DurableTask.SQLServer.Tracking;
+using Newtonsoft.Json;
 using System;
-using System.Collections.Generic;
-using System.Text;
+using System.Runtime.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
-using maskx.DurableTask.SQLServer.Tracking;
-using DurableTask.Core.History;
-using Newtonsoft.Json;
-using System.Runtime.Serialization;
 
 namespace maskx.DurableTask.SQLServer
 {
@@ -49,7 +47,7 @@ namespace maskx.DurableTask.SQLServer
                             ExtensionData = reader.IsDBNull(3) ? null : dataConverter.Deserialize<ExtensionDataObject>(reader.GetString(3))
                         }
                     };
-                    t.Id = $"{t.TaskMessage.OrchestrationInstance.InstanceId}_{t.TaskMessage.OrchestrationInstance.ExecutionId}_{t.TaskMessage.SequenceNumber}";
+                    //  t.Id = $"{t.TaskMessage.OrchestrationInstance.InstanceId}_{t.TaskMessage.OrchestrationInstance.ExecutionId}_{t.TaskMessage.SequenceNumber}";
                 }
             }
             return t;
@@ -66,7 +64,7 @@ where [Status]='Pending'
             string sqlGetTimeout = $@"
 update top(1) {settings.MessageTableName}
 set [Status]='locked',LockedUntilUtc=@LockedUntilUtc
-output INSERTED.SequenceNumber,INSERTED.OrchestrationInstance,INSERTED.[Event],INSERTED.ExtensionData,INSERTED.Id
+output INSERTED.SequenceNumber,INSERTED.OrchestrationInstance,INSERTED.[Event],INSERTED.ExtensionData,INSERTED.LockedUntilUtc,INSERTED.Id
 where [Status]='Locked'
 and LockedUntilUtc<getutcdate()
 ";

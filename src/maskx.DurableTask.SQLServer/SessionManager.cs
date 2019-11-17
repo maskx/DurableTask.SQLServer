@@ -5,6 +5,7 @@ using maskx.DurableTask.SQLServer.Settings;
 using maskx.DurableTask.SQLServer.Tracking;
 using Newtonsoft.Json;
 using System;
+using System.Reflection.Metadata;
 using System.Runtime.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
@@ -18,9 +19,9 @@ namespace maskx.DurableTask.SQLServer
 
         private const string CreateSessionSQL = @"
  INSERT INTO {0}
- ([InstanceId],[LockedUntilUtc],[Status],[FireAt])
+ ([InstanceId],[ExecutionId],[LockedUntilUtc],[Status])
  VALUES
- (@InstanceId,@LockedUntilUtc,@Status,@FireAt);
+ (@InstanceId,@ExecutionId,@LockedUntilUtc,@Status);
 
  INSERT INTO  {1}
  ([InstanceId],[ExecutionId],[SequenceNumber],[OrchestrationInstance],[FireAt], [LockedUntilUtc],[Status],[Event],[ExtensionData])
@@ -29,75 +30,51 @@ namespace maskx.DurableTask.SQLServer
 ";
 
         private const string SendMessageSQL = @"
-MERGE {0} TARGET
-USING (VALUES (@InstanceId)) AS SOURCE ([InstanceId])
-ON [Target].InstanceId = [Source].InstanceId
-WHEN NOT MATCHED THEN INSERT ([InstanceId],[LockedUntilUtc],[Status]) VALUES (@InstanceId,@LockedUntilUtc,@Status);
-    INSERT INTO {1}
-    ([InstanceId],[ExecutionId],[SequenceNumber],[OrchestrationInstance],[FireAt], [LockedUntilUtc],[Status],[Event],[ExtensionData])
-    VALUES
-    ( @InstanceId,@ExecutionId,@SequenceNumber,@OrchestrationInstance,@FireAt,@LockedUntilUtc,@Status,@Event,@ExtensionData);
-";
+if @ExecutionId is not null
+begin
+    MERGE {0} TARGET
+    USING (VALUES (@InstanceId,@ExecutionId)) AS SOURCE ([InstanceId],[ExecutionId])
+    ON [Target].InstanceId = [Source].InstanceId and [Target].ExecutionId = [Source].ExecutionId
+    WHEN NOT MATCHED THEN INSERT ([InstanceId],[ExecutionId],[LockedUntilUtc],[Status]) VALUES (@InstanceId,@ExecutionId,@LockedUntilUtc,@Status);
 
-        private const string GetPendingSessionSQL = @"
-declare @InstanceId nvarchar(50)
+end
 
-update top(1) {0}
-set @InstanceId=InstanceId,[Status]='Locked',LockedUntilUtc=@LockedUntilUtc
-output INSERTED.InstanceId,INSERTED.LockedUntilUtc,INSERTED.[Status],INSERTED.SessionState
-where [Status]='Pending'
-and (select count(0) from {1} where {1}.InstanceId={0}.InstanceId)>0
-
-update {1}
-set [Status]='Locked',LockedUntilUtc=@LockedUntilUtc
-output INSERTED.SequenceNumber,INSERTED.OrchestrationInstance,INSERTED.[Event],INSERTED.ExtensionData
-where InstanceId=@InstanceId
-";
-
-        private const string GetTimeoutSessionSQL = @"
-declare @InstanceId nvarchar(50)
-
-update top(1) {0}
-set @InstanceId=InstanceId,[Status]='Locked',LockedUntilUtc=@LockedUntilUtc
-output INSERTED.InstanceId,INSERTED.LockedUntilUtc,INSERTED.[Status],INSERTED.SessionState
-where [Status]='Locked'
-and LockedUntilUtc<getutcdate()
-
-update {1}
-set [Status]='Locked',LockedUntilUtc=@LockedUntilUtc
-output INSERTED.SequenceNumber,INSERTED.OrchestrationInstance,INSERTED.[Event],INSERTED.ExtensionData
-where InstanceId=@InstanceId
+INSERT INTO {1}
+([InstanceId],[ExecutionId],[SequenceNumber],[OrchestrationInstance],[FireAt], [LockedUntilUtc],[Status],[Event],[ExtensionData])
+VALUES
+( @InstanceId,@ExecutionId,@SequenceNumber,@OrchestrationInstance,@FireAt,@LockedUntilUtc,@Status,@Event,@ExtensionData);
 ";
 
         private const string RemoveSessionSql = @"
-delete {0} where InstanceId=@InstanceId
-delete {1} where InstanceId=@InstanceId
+delete {0} where InstanceId=@InstanceId and ExecutionId=@ExecutionId
+delete {1} where InstanceId=@InstanceId and ExecutionId=@ExecutionId
 ";
 
         private const string CompleteSessionStateSql = @"
 delete {1}
-where InstanceId=@InstanceId and Status='Locked'
+where InstanceId=@InstanceId and ExecutionId=@ExecutionId and Status='Locked'
 
 update {0}
 set SessionState=@SessionState,[Status]='Pending',LockedUntilUtc=@LockedUntilUtc
-where InstanceId=@InstanceId
+where InstanceId=@InstanceId and ExecutionId=@ExecutionId
 ";
 
         private const string AcceptSessionSql = @"
 declare @InstanceId nvarchar(50)
+declare @ExecutionId nvarchar(50)
 
 update top(1) {0}
-set @InstanceId=InstanceId,[Status]='Locked',LockedUntilUtc=@LockedUntilUtc
-output INSERTED.InstanceId,INSERTED.LockedUntilUtc,INSERTED.[Status],INSERTED.SessionState
+set @InstanceId=InstanceId,[Status]='Locked',LockedUntilUtc=@LockedUntilUtc,@ExecutionId=ExecutionId
+output INSERTED.InstanceId,INSERTED.LockedUntilUtc,INSERTED.[Status],INSERTED.SessionState,INSERTED.ExecutionId
 where [Status]='Pending'
-and (select min(FireAt) from {1} where {0}.InstanceId={1}.Instanceid and FireAt is not null) <=getutcdate()
+and (select min(FireAt) from {1} where {0}.InstanceId={1}.InstanceId and {0}.ExecutionId={1}.ExecutionId and FireAt is not null) <=getutcdate()
 
 if @InstanceId is not null
 begin
     update {1}
     set [Status]='Locked',LockedUntilUtc=@LockedUntilUtc
     output INSERTED.SequenceNumber,INSERTED.OrchestrationInstance,INSERTED.[Event],INSERTED.ExtensionData
-    where InstanceId=@InstanceId
+    where InstanceId=@InstanceId and ExecutionId=@ExecutionId
     and FireAt<=getutcdate()
     return
 end
@@ -105,18 +82,19 @@ end
 if @InstanceId is null
 begin
     update top(1) {0}
-    set @InstanceId=InstanceId,[Status]='Locked',LockedUntilUtc=@LockedUntilUtc
-    output INSERTED.InstanceId,INSERTED.LockedUntilUtc,INSERTED.[Status],INSERTED.SessionState
+    set @InstanceId=InstanceId,[Status]='Locked',LockedUntilUtc=@LockedUntilUtc,@ExecutionId=ExecutionId
+    output INSERTED.InstanceId,INSERTED.LockedUntilUtc,INSERTED.[Status],INSERTED.SessionState,INSERTED.ExecutionId
     where [Status]='Pending'
-    and FireAt is null
-    and (select count(0) from {1} where {1}.InstanceId={0}.InstanceId and FireAt is null)>0
+    and (select count(0) from {1} where {1}.InstanceId={0}.InstanceId
+            and ({1}.ExecutionId={0}.ExecutionId or {1}.ExecutionId is null)
+            and FireAt is null)>0
 end
 
 if @InstanceId is null
 begin
     update top(1) {0}
-    set @InstanceId=InstanceId,[Status]='Locked',LockedUntilUtc=@LockedUntilUtc
-    output INSERTED.InstanceId,INSERTED.LockedUntilUtc,INSERTED.[Status],INSERTED.SessionState
+    set @InstanceId=InstanceId,[Status]='Locked',LockedUntilUtc=@LockedUntilUtc,@ExecutionId=ExecutionId
+    output INSERTED.InstanceId,INSERTED.LockedUntilUtc,INSERTED.[Status],INSERTED.SessionState,INSERTED.ExecutionId
     where [Status]='Locked'
     and LockedUntilUtc<getutcdate()
 end
@@ -124,10 +102,11 @@ end
 if @InstanceId is not null
 begin
     update {1}
-    set [Status]='Locked',LockedUntilUtc=@LockedUntilUtc
+    set [Status]='Locked',LockedUntilUtc=@LockedUntilUtc,ExecutionId=@ExecutionId
     output INSERTED.SequenceNumber,INSERTED.OrchestrationInstance,INSERTED.[Event],INSERTED.ExtensionData
     where InstanceId=@InstanceId
-    and FireAt is null
+        and (ExecutionId=@ExecutionId or ExecutionId is null)
+        and FireAt is null
 end
 ";
 
@@ -135,6 +114,7 @@ end
 update {0}
 set SessionState=@SessionState
 where InstanceId=@InstanceId
+and ExecutionId=@ExecutionId
 ";
 
         public SessionManager(SQLServerSettings settings)
@@ -207,45 +187,6 @@ where InstanceId=@InstanceId
             }
         }
 
-        private async Task<SQLServerOrchestrationSession> GetSessionAsync(string cmdText, CancellationToken cancellationToken)
-        {
-            SQLServerOrchestrationSession t = null;
-            using (var con = await this.settings.GetDatabaseConnection())
-            {
-                var cmd = con.CreateCommand();
-                cmd.AddStatement(cmdText, new
-                {
-                    LockedUntilUtc = DateTime.UtcNow.AddSeconds(this.settings.SessionLockedSeconds)
-                });
-                await con.OpenAsync();
-                var reader = await cmd.ExecuteReaderAsync(cancellationToken);
-                if (reader.Read())
-                {
-                    t = new SQLServerOrchestrationSession()
-                    {
-                        Id = reader["InstanceId"].ToString(),
-                        LockedUntilUtc = reader.GetDateTime(1),
-                        SessionState = reader.IsDBNull(3) ? string.Empty : reader["SessionState"].ToString()
-                    };
-                    if (!reader.NextResult())
-                    {
-                        throw new Exception("get a session without message");
-                    }
-                    while (reader.Read())
-                    {
-                        t.Messages.Add(new TaskMessage()
-                        {
-                            SequenceNumber = reader.GetInt64(0),
-                            OrchestrationInstance = reader.IsDBNull(1) ? null : dataConverter.Deserialize<OrchestrationInstance>(reader.GetString(1)),
-                            Event = reader.IsDBNull(2) ? null : JsonConvert.DeserializeObject<HistoryEvent>(reader.GetString(2), new JsonSerializerSettings { TypeNameHandling = TypeNameHandling.Auto }),
-                            ExtensionData = reader.IsDBNull(3) ? null : dataConverter.Deserialize<ExtensionDataObject>(reader.GetString(3))
-                        });
-                    }
-                }
-            }
-            return t;
-        }
-
         public async Task<SQLServerOrchestrationSession> AcceptSessionAsync(TimeSpan receiveTimeout, CancellationToken cancellationToken)
         {
             SQLServerOrchestrationSession t = null;
@@ -269,7 +210,8 @@ where InstanceId=@InstanceId
                 {
                     t = new SQLServerOrchestrationSession()
                     {
-                        Id = reader["InstanceId"].ToString(),
+                        InstanceId = reader["InstanceId"].ToString(),
+                        ExecutionId = reader["ExecutionId"].ToString(),
                         LockedUntilUtc = reader.GetDateTime(1),
                         SessionState = reader.IsDBNull(3) ? string.Empty : reader["SessionState"].ToString()
                     };
@@ -287,7 +229,7 @@ where InstanceId=@InstanceId
                             ExtensionData = reader.IsDBNull(3) ? null : dataConverter.Deserialize<ExtensionDataObject>(reader.GetString(3))
                         };
                         if (string.IsNullOrEmpty(m.OrchestrationInstance.ExecutionId))
-                            m.OrchestrationInstance.ExecutionId = string.Empty;
+                            m.OrchestrationInstance.ExecutionId = t.ExecutionId;
                         t.Messages.Add(m);
                     }
                 }
@@ -297,11 +239,22 @@ where InstanceId=@InstanceId
 
         public async Task AbandonSessionAsync(string id)
         {
-            return;
+            //TODO: abandon session
+            using (var con = await this.settings.GetDatabaseConnection())
+            {
+                var cmd = con.CreateCommand();
+                cmd.AddStatement(string.Format(AcceptSessionSql, settings.SessionTableName, settings.SessionMessageTableName), new
+                {
+                    LockedUntilUtc = DateTime.UtcNow.AddSeconds(this.settings.SessionLockedSeconds)
+                });
+                await con.OpenAsync();
+                await cmd.ExecuteNonQueryAsync();
+            }
         }
 
         public async Task CompleteSessionAsync(string id, string newState)
         {
+            var ids = ExtractId(id);
             using (var con = await this.settings.GetDatabaseConnection())
             {
                 var cmd = con.CreateCommand();
@@ -309,14 +262,16 @@ where InstanceId=@InstanceId
                 {
                     cmd.AddStatement(string.Format(RemoveSessionSql, settings.SessionTableName, settings.SessionMessageTableName), new
                     {
-                        InstanceId = id
+                        InstanceId = ids.InstanceId,
+                        ExecutionId = ids.ExecutionId
                     });
                 }
                 else
                 {
                     cmd.AddStatement(string.Format(CompleteSessionStateSql, settings.SessionTableName, settings.SessionMessageTableName), new
                     {
-                        InstanceId = id,
+                        InstanceId = ids.InstanceId,
+                        ExecutionId = ids.ExecutionId,
                         SessionState = newState,
                         LockedUntilUtc = DBNull.Value
                     });
@@ -328,12 +283,14 @@ where InstanceId=@InstanceId
 
         public async Task SetStateAsync(string id, string sessinoState)
         {
+            var ids = ExtractId(id);
             using (var con = await this.settings.GetDatabaseConnection())
             {
                 var cmd = con.CreateCommand();
                 cmd.AddStatement(string.Format(SetSessionStateSql, settings.SessionTableName), new
                 {
-                    InstanceId = id,
+                    InstanceId = ids.InstanceId,
+                    ExecutionId = ids.ExecutionId,
                     SessionState = sessinoState
                 });
                 await con.OpenAsync();
@@ -354,20 +311,29 @@ where InstanceId=@InstanceId
             return count;
         }
 
+        private (string InstanceId, string ExecutionId) ExtractId(string id)
+        {
+            var s = id.Split('_');
+            return (s[0], s[1]);
+        }
+
         public async Task<DateTime> RenewLock(string id)
         {
             string sql = $@"
 UPDATE {this.settings.SessionTableName}
 SET LockedUntilUtc=@LockedUntilUtc
 WHERE InstanceId=@InstanceId
+AND ExecutionId=@ExecutionId
 ";
+            var ids = ExtractId(id);
             DateTime dt = DateTime.UtcNow.AddSeconds(this.settings.MessageLockedSeconds);
             using (var con = await this.settings.GetDatabaseConnection())
             {
                 var cmd = con.CreateCommand();
                 cmd.AddStatement(sql, new
                 {
-                    InstanceId = id,
+                    InstanceId = ids.InstanceId,
+                    ExecutionId = ids.ExecutionId,
                     LockedUntilUtc = dt
                 });
                 await con.OpenAsync();
@@ -375,8 +341,6 @@ WHERE InstanceId=@InstanceId
             }
             return dt;
         }
-
-        private const string GetPendingOrchestrationsCountSQL = @"return select count(0) from {0} where [Status]='Pending'";
 
         public async Task DeleteSessionManagerAsync()
         {
@@ -408,13 +372,14 @@ IF(OBJECT_ID(@table) IS NULL)
 BEGIN
     CREATE TABLE {settings.SessionTableName} (
         [InstanceId] [nvarchar](50) NOT NULL,
+        [ExecutionId] [nvarchar](50) NOT NULL,
 	    [LockedUntilUtc] [datetime2](7)  NULL,
-        [FireAt] [datetime2](7)  NULL,
 	    [Status] [nvarchar](50) NOT NULL,
 	    [SessionState] [nvarchar](max) NULL,
     CONSTRAINT [PK_{settings.SchemaName}_{settings.HubName}_{SQLServerSettings.SessionTable}] PRIMARY KEY CLUSTERED
     (
-	    [InstanceId] ASC
+	    [InstanceId] ASC,
+        [ExecutionId] ASC
     )WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON) ON [PRIMARY]
     ) ON [PRIMARY] TEXTIMAGE_ON [PRIMARY]
 END", new { table = settings.SessionTableName });
@@ -439,5 +404,7 @@ END", new { table = settings.SessionMessageTableName });
                 await command.ExecuteNonQueryAsync();
             }
         }
+
+        private const string GetPendingOrchestrationsCountSQL = @"return select count(0) from {0} where [Status]='Pending'";
     }
 }

@@ -33,3 +33,9 @@ just copy from https://github.com/Azure/durabletask
   * when OrchestrationState Table have no recorder, should check JumpStart table
 
 ### SQLServerBlobStore
+
+
+### dd
+
+* maybe have a bug in ServiceBusOrchestrationService.WaitForOrchestrationAsync
+* maybe have a bug in SqlServerInstanceStore.GetOrchestrationStateAsync

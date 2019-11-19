@@ -314,9 +314,7 @@ namespace maskx.DurableTask.SQLServer
                 NewMessages = taskSession.Messages.ToList(),
                 InstanceId = taskSession.Id,
                 LockedUntilUtc = taskSession.LockedUntilUtc,
-                OrchestrationRuntimeState =
-                    DeserializeOrchestrationRuntimeState(taskSession.SessionState) ??
-                    new OrchestrationRuntimeState(),
+                OrchestrationRuntimeState = taskSession.SessionState
             };
 
             return wi;
@@ -356,24 +354,35 @@ namespace maskx.DurableTask.SQLServer
                 {
                     var trackingMessages = CreateTrackingMessagesAsync(runtimeState, 1);
                     await ProcessTrackingWorkItemAsync(trackingMessages);
-                    if (workItem.OrchestrationRuntimeState != newOrchestrationRuntimeState)
-                    {
-                        var trackingMessages1 = CreateTrackingMessagesAsync(newOrchestrationRuntimeState, 1);
-                        await ProcessTrackingWorkItemAsync(trackingMessages1);
-                    }
-                    if (state != null)
-                    {
-                        var t = new TrackingWorkItem
-                        {
-                            InstanceId = workItem.OrchestrationRuntimeState.OrchestrationInstance.InstanceId,
-                            LockedUntilUtc = workItem.LockedUntilUtc,
-                            NewMessages = workItem.NewMessages,
-                            SessionInstance = workItem.Session
-                        };
-                        await ProcessTrackingWorkItemAsync(t);
-                    }
+                    //if (newOrchestrationRuntimeState != null && runtimeState != newOrchestrationRuntimeState)
+                    //{
+                    //    var trackingMessages1 = CreateTrackingMessagesAsync(newOrchestrationRuntimeState, 1);
+                    //    await ProcessTrackingWorkItemAsync(trackingMessages1);
+                    //}
+                    // await CommitState(runtimeState, state);
                 }
             }
+        }
+
+        private async Task CommitState(OrchestrationRuntimeState runtimeState, OrchestrationState state)
+        {
+            List<TaskMessage> newMessages = new List<TaskMessage>();
+            newMessages.Add(new TaskMessage
+            {
+                Event = new HistoryStateEvent(-1, state),
+                SequenceNumber = 999,
+                OrchestrationInstance = runtimeState.OrchestrationInstance
+            });
+
+            var t = new TrackingWorkItem
+            {
+                InstanceId = runtimeState.OrchestrationInstance.InstanceId,
+                LockedUntilUtc = DateTime.UtcNow,
+                NewMessages = newMessages,
+                SessionInstance = null//TODO: need set to session
+            };
+
+            await ProcessTrackingWorkItemAsync(t);
         }
 
         /// <inheritdoc />
@@ -479,27 +488,6 @@ namespace maskx.DurableTask.SQLServer
             return workItem;
         }
 
-        private string SerializeOrchestrationRuntimeState(OrchestrationRuntimeState runtimeState)
-        {
-            if (runtimeState == null)
-            {
-                return null;
-            }
-
-            return JsonConvert.SerializeObject(runtimeState.Events,
-                new JsonSerializerSettings { TypeNameHandling = TypeNameHandling.Auto });
-        }
-
-        private OrchestrationRuntimeState DeserializeOrchestrationRuntimeState(string serializedState)
-        {
-            if (string.IsNullOrEmpty(serializedState))
-            {
-                return null;
-            }
-            var events = JsonConvert.DeserializeObject<IList<HistoryEvent>>(serializedState, new JsonSerializerSettings { TypeNameHandling = TypeNameHandling.Auto });
-            return new OrchestrationRuntimeState(events);
-        }
-
         /// <inheritdoc />
         public void Dispose()
         {
@@ -543,14 +531,14 @@ namespace maskx.DurableTask.SQLServer
               newOrchestrationRuntimeState.ExecutionStartedEvent == null ||
               newOrchestrationRuntimeState.OrchestrationStatus != OrchestrationStatus.Running)
             {
-                await this.sessionManager.CompleteSessionAsync(workItem.InstanceId, null);
+                await this.sessionManager.SetStateAsync(workItem.InstanceId, null);
                 return true;
             }
-            await this.sessionManager.CompleteSessionAsync(workItem.InstanceId, SerializeOrchestrationRuntimeState(newOrchestrationRuntimeState));
+            await this.sessionManager.SetStateAsync(workItem.InstanceId, newOrchestrationRuntimeState);
             return true;
         }
 
-        private async Task ProcessTrackingWorkItemAsync(TrackingWorkItem workItem)
+        private async Task ProcessTrackingWorkItemAsync(TrackingWorkItem workItem, OrchestrationRuntimeState state = null)
         {
             if (workItem == null)
                 return;
@@ -561,14 +549,23 @@ namespace maskx.DurableTask.SQLServer
             {
                 if (taskMessage.Event.EventType == EventType.HistoryState)
                 {
+                    var s = (taskMessage.Event as HistoryStateEvent)?.State;
+                    if (string.IsNullOrEmpty(s.OrchestrationInstance.ExecutionId))
+                    {
+                        s.OrchestrationInstance.ExecutionId = state.OrchestrationInstance.ExecutionId;
+                    }
                     stateEntities.Add(new OrchestrationStateInstanceEntity
                     {
-                        State = (taskMessage.Event as HistoryStateEvent)?.State,
+                        State = s,
                         SequenceNumber = taskMessage.SequenceNumber
                     });
                 }
                 else
                 {
+                    if (string.IsNullOrEmpty(taskMessage.OrchestrationInstance.ExecutionId))
+                    {
+                        taskMessage.OrchestrationInstance.ExecutionId = state.OrchestrationInstance.ExecutionId;
+                    }
                     historyEntities.Add(new OrchestrationWorkItemInstanceEntity
                     {
                         InstanceId = taskMessage.OrchestrationInstance.InstanceId,
@@ -598,6 +595,10 @@ namespace maskx.DurableTask.SQLServer
                 // TODO : send batch to instance store, it can write it as individual if it chooses
                 foreach (OrchestrationStateInstanceEntity stateEntity in stateEntities)
                 {
+                    if (String.IsNullOrEmpty(stateEntity.State.OrchestrationInstance.ExecutionId))
+                    {
+                        break;
+                    }
                     await this.instanceStore.WriteEntitiesAsync(new List<OrchestrationStateInstanceEntity> { stateEntity });
                 }
             }

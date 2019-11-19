@@ -1,7 +1,7 @@
 # DurableTask.SQLServer
 
-
 * No BolbStore
+* Not support AbandonSessionAsync
 
 
 ## TODO:
@@ -35,7 +35,9 @@ just copy from https://github.com/Azure/durabletask
 ### SQLServerBlobStore
 
 
-### dd
+### Issues
 
 * maybe have a bug in ServiceBusOrchestrationService.WaitForOrchestrationAsync
 * maybe have a bug in SqlServerInstanceStore.GetOrchestrationStateAsync
+* UnitTest should run one by one, because there have static variable in orchestration define
+* 

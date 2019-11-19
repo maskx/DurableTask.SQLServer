@@ -7,10 +7,10 @@ namespace maskx.DurableTask.SQLServer
 {
     internal class SQLServerOrchestrationSession
     {
-        public string Id { get { return $"{InstanceId}_{ExecutionId}"; } }
+        public string Id { get { return InstanceId; } }
         public string InstanceId { get; set; }
         public string ExecutionId { get; set; }
-        public string SessionState { get; set; }
+        public OrchestrationRuntimeState SessionState { get; set; }
         public List<TaskMessage> Messages { get; set; }
 
         /// <summary>
@@ -22,7 +22,7 @@ namespace maskx.DurableTask.SQLServer
 
         public SQLServerOrchestrationSession()
         {
-            this.SessionState = string.Empty;
+            this.SessionState = null;
             this.Messages = new List<TaskMessage>();
             this.LockTable = new HashSet<string>();
         }

@@ -6,7 +6,6 @@ using DurableTask.Core.Serializing;
 using DurableTask.Core.Tracing;
 using DurableTask.Core.Tracking;
 using maskx.DurableTask.SQLServer.Settings;
-using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 using System.Data.Common;
@@ -40,7 +39,6 @@ namespace maskx.DurableTask.SQLServer
         public SQLServerOrchestrationService(string connectionString,
             string hubName,
             IOrchestrationServiceInstanceStore instanceStore,
-            IOrchestrationServiceBlobStore blobStore,
             SQLServerOrchestrationServiceSettings settings)
         {
             this.settings = settings;
@@ -51,7 +49,7 @@ namespace maskx.DurableTask.SQLServer
                 HubName = hubName,
                 MessageLockedSeconds = settings.MessageLockedSeconds,
                 SessionLockedSeconds = settings.SessionLockedSeconds,
-                GetDatabaseConnection = () => Task.Run(() => new SqlConnection(connectionString) as DbConnection)
+                ConnectionString = connectionString
             };
             this.sessionManager = new SessionManager(sqlSettings);
             this.messageMagager = new MessageMagager(sqlSettings);
@@ -84,9 +82,14 @@ namespace maskx.DurableTask.SQLServer
         /// <inheritdoc />
         public async Task CreateIfNotExistsAsync()
         {
-            var t1 = this.sessionManager.InitializeSessionManagerAsync(false);
-            var t2 = this.messageMagager.InitializeMessageManagerAsync(false);
-            await Task.WhenAll(t1, t2);
+            List<Task> tasks = new List<Task>();
+            if (this.instanceStore != null)
+            {
+                tasks.Add(this.instanceStore.InitializeStoreAsync(false));
+            }
+            tasks.Add(this.sessionManager.InitializeSessionManagerAsync(false));
+            tasks.Add(this.messageMagager.InitializeMessageManagerAsync(false));
+            await Task.WhenAll(tasks);
         }
 
         /// <inheritdoc />
@@ -362,27 +365,6 @@ namespace maskx.DurableTask.SQLServer
                     // await CommitState(runtimeState, state);
                 }
             }
-        }
-
-        private async Task CommitState(OrchestrationRuntimeState runtimeState, OrchestrationState state)
-        {
-            List<TaskMessage> newMessages = new List<TaskMessage>();
-            newMessages.Add(new TaskMessage
-            {
-                Event = new HistoryStateEvent(-1, state),
-                SequenceNumber = 999,
-                OrchestrationInstance = runtimeState.OrchestrationInstance
-            });
-
-            var t = new TrackingWorkItem
-            {
-                InstanceId = runtimeState.OrchestrationInstance.InstanceId,
-                LockedUntilUtc = DateTime.UtcNow,
-                NewMessages = newMessages,
-                SessionInstance = null//TODO: need set to session
-            };
-
-            await ProcessTrackingWorkItemAsync(t);
         }
 
         /// <inheritdoc />
@@ -716,7 +698,7 @@ namespace maskx.DurableTask.SQLServer
             {
                 throw ex;
             }
-            //todo: LockedUntilUtc need to be set
+            // TODO: LockedUntilUtc need to be set
             return new TrackingWorkItem
             {
                 InstanceId = runtimeState.OrchestrationInstance.InstanceId,

@@ -34,9 +34,6 @@ namespace maskx.DurableTask.SQLServer.Tracking
 
         public string JumpStartTableWithSchema => $"[{SchemaName}].[{HubName}{JumpStartTable}]";
 
-        /// <summary>
-        /// The delegate used to retrieve a <see cref="DbConnection"/> instance.
-        /// </summary>
-        public Func<Task<DbConnection>> GetDatabaseConnection { get; set; }
+        public string ConnectionString { get; set; }
     }
 }

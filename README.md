@@ -1,10 +1,12 @@
 # DurableTask.SQLServer
 
 * No BolbStore
-* Not support AbandonSessionAsync
 
+## TODO
 
-## TODO:
+* how to support abandon session and message should be investigated
+* Tracing & log support
+* add more unit test
 
 ### TaskSessionManager
 
@@ -16,13 +18,7 @@
   * support retry when no session retrieved
 
 
-### PeekLockQueue
-
-## Roadmap
-
-### SQLServerOrchestrationService
-
-### SQLServerInstanceStore
+## SQLServerInstanceStore
 
 just copy from https://github.com/Azure/durabletask
 
@@ -34,6 +30,7 @@ just copy from https://github.com/Azure/durabletask
 
 ### SQLServerBlobStore
 
+Not supported
 
 ### Issues
 

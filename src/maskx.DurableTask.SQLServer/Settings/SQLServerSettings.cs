@@ -19,7 +19,6 @@ namespace maskx.DurableTask.SQLServer.Settings
         public string SessionTableName => $"[{SchemaName}].[{HubName}{SessionTable}]";
         public string SessionMessageTableName => $"[{SchemaName}].[{HubName}{SessionMessageTable}]";
         public string MessageTableName => $"[{SchemaName}].[{HubName}{MessageTable}]";
-        public Func<Task<DbConnection>> GetDatabaseConnection { get; set; }
 
         /// <summary>
         /// Orchestration session locked time
@@ -30,5 +29,7 @@ namespace maskx.DurableTask.SQLServer.Settings
         /// Message locked time
         /// </summary>
         public double MessageLockedSeconds { get; set; } = 300;
+
+        public string ConnectionString { get; set; }
     }
 }

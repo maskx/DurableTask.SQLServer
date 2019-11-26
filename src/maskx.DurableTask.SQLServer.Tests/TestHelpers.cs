@@ -41,7 +41,6 @@ namespace maskx.DurableTask.SQLServer.Tests
 
         public static IConfigurationRoot GetIConfigurationRoot(string outputPath)
         {
-            string d = AppContext.BaseDirectory;
             return new ConfigurationBuilder()
                 .SetBasePath(outputPath)
                 .AddJsonFile("appsettings.json", optional: true)
@@ -82,7 +81,6 @@ namespace maskx.DurableTask.SQLServer.Tests
                 SQLServerConnectionString,
                 TaskHubName,
                CreateSQLServerInstanceStore(),
-                null,
                 settings);
             return service;
         }
@@ -94,7 +92,6 @@ namespace maskx.DurableTask.SQLServer.Tests
                 SQLServerConnectionString,
                 TaskHubName,
                CreateSQLServerInstanceStore(),
-                null,
                 settings);
             return service;
         }
@@ -105,7 +102,7 @@ namespace maskx.DurableTask.SQLServer.Tests
             {
                 SchemaName = "dbo",
                 HubName = "DTF",
-                GetDatabaseConnection = () => Task.Run(() => new SqlConnection(SQLServerConnectionString) as DbConnection)
+                ConnectionString = SQLServerConnectionString
             });
         }
 

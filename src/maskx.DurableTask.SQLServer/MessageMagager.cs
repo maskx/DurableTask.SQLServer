@@ -65,11 +65,11 @@ VALUES
                 {
                     db.AddStatement(sql, new
                     {
-                        ExecutionId = msg.OrchestrationInstance.ExecutionId,
-                        InstanceId = msg.OrchestrationInstance.InstanceId,
+                        msg.OrchestrationInstance.ExecutionId,
+                        msg.OrchestrationInstance.InstanceId,
+                        msg.SequenceNumber,
                         LockedUntilUtc = DBNull.Value,
                         Status = "Pending",
-                        SequenceNumber = msg.SequenceNumber,
                         OrchestrationInstance = dataConverter.Serialize(msg.OrchestrationInstance),
                         Event = dataConverter.Serialize(msg.Event),
                         ExtensionData = dataConverter.Serialize(msg.ExtensionData)
@@ -86,7 +86,7 @@ VALUES
             {
                 db.AddStatement(sql, new
                 {
-                    Id = workItem.Id
+                    workItem.Id
                 });
                 await db.ExecuteNonQueryAsync();
             }
@@ -103,7 +103,7 @@ WHERE Id=@Id
             {
                 db.AddStatement(sql, new
                 {
-                    Id = workItem.Id,
+                    workItem.Id,
                     LockedUntilUtc = DBNull.Value
                 });
                 await db.ExecuteNonQueryAsync();
@@ -122,7 +122,7 @@ WHERE Id=@Id
             {
                 db.AddStatement(sql, new
                 {
-                    Id = workItem.Id,
+                    workItem.Id,
                     LockedUntilUtc = dt
                 });
                 await db.ExecuteNonQueryAsync();

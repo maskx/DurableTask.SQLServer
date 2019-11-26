@@ -70,8 +70,8 @@ namespace maskx.DurableTask.SQLServer.Tracking
                 {
                     db.AddStatement(sql, new
                     {
-                        InstanceId = entity.State.OrchestrationInstance.InstanceId,
-                        ExecutionId = entity.State.OrchestrationInstance.ExecutionId
+                        entity.State.OrchestrationInstance.InstanceId,
+                        entity.State.OrchestrationInstance.ExecutionId
                     });
                 }
                 await db.ExecuteNonQueryAsync();
@@ -122,26 +122,30 @@ namespace maskx.DurableTask.SQLServer.Tracking
 
                 await db.ExecuteReaderAsync((reader, index) =>
                 {
-                    var jumpStartEntity = new OrchestrationJumpStartInstanceEntity();
-                    jumpStartEntity.SequenceNumber = reader.GetValue<long>("SequenceNumber");
-                    jumpStartEntity.JumpStartTime = reader.GetValue<DateTime>("JumpStartTime");
+                    var jumpStartEntity = new OrchestrationJumpStartInstanceEntity
+                    {
+                        SequenceNumber = reader.GetValue<long>("SequenceNumber"),
+                        JumpStartTime = reader.GetValue<DateTime>("JumpStartTime")
+                    };
 
-                    var state = new OrchestrationState();
-                    state.CompletedTime = reader.GetValue<DateTime>("CompletedTime");
-                    state.CompressedSize = reader.GetValue<long>("CompressedSize");
-                    state.CreatedTime = reader.GetValue<DateTime>("CreatedTime");
-                    state.Input = reader.GetValue<string>("Input");
-                    state.LastUpdatedTime = reader.GetValue<DateTime>("LastUpdatedTime");
-                    state.Name = reader.GetValue<string>("Name");
+                    var state = new OrchestrationState
+                    {
+                        CompletedTime = reader.GetValue<DateTime>("CompletedTime"),
+                        CompressedSize = reader.GetValue<long>("CompressedSize"),
+                        CreatedTime = reader.GetValue<DateTime>("CreatedTime"),
+                        Input = reader.GetValue<string>("Input"),
+                        LastUpdatedTime = reader.GetValue<DateTime>("LastUpdatedTime"),
+                        Name = reader.GetValue<string>("Name"),
 
-                    state.OrchestrationInstance = dataConverter.Deserialize<OrchestrationInstance>(reader.GetValue<string>("OrchestrationInstance"));
-                    state.OrchestrationStatus = reader.GetValue<OrchestrationStatus>("OrchestrationStatus");
-                    state.Output = reader.GetValue<string>("Output");
-                    state.ParentInstance = dataConverter.Deserialize<ParentInstance>(reader.GetValue<string>("ParentInstance"));
-                    state.Size = reader.GetValue<long>("Size");
-                    state.Status = reader.GetValue<string>("Status");
-                    state.Tags = dataConverter.Deserialize<Dictionary<string, string>>(reader.GetValue<string>("Tags"));
-                    state.Version = reader.GetValue<string>("Version");
+                        OrchestrationInstance = dataConverter.Deserialize<OrchestrationInstance>(reader.GetValue<string>("OrchestrationInstance")),
+                        OrchestrationStatus = reader.GetValue<OrchestrationStatus>("OrchestrationStatus"),
+                        Output = reader.GetValue<string>("Output"),
+                        ParentInstance = dataConverter.Deserialize<ParentInstance>(reader.GetValue<string>("ParentInstance")),
+                        Size = reader.GetValue<long>("Size"),
+                        Status = reader.GetValue<string>("Status"),
+                        Tags = dataConverter.Deserialize<Dictionary<string, string>>(reader.GetValue<string>("Tags")),
+                        Version = reader.GetValue<string>("Version")
+                    };
 
                     jumpStartEntity.State = state;
 

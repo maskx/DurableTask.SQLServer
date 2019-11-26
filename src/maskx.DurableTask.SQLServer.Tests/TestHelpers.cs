@@ -52,8 +52,7 @@ namespace maskx.DurableTask.SQLServer.Tests
         {
             var settings = new SQLServerOrchestrationServiceSettings
             {
-                TaskOrchestrationDispatcherSettings = { CompressOrchestrationState = true },
-                MessageCompressionSettings = new CompressionSettings { Style = style, ThresholdInBytes = 1024 }
+                TaskOrchestrationDispatcherSettings = { CompressOrchestrationState = true }
             };
 
             return settings;
@@ -63,11 +62,6 @@ namespace maskx.DurableTask.SQLServer.Tests
         {
             var settings = new SQLServerOrchestrationServiceSettings
             {
-                MessageCompressionSettings = new CompressionSettings
-                {
-                    Style = CompressionStyle.Threshold,
-                    ThresholdInBytes = 1024
-                }
             };
 
             return settings;
@@ -209,18 +203,6 @@ namespace maskx.DurableTask.SQLServer.Tests
             string message = $"Instance '{instance}' not completed within {timeWaited} seconds.\n History: {history}";
 
             return message;
-        }
-
-        //TODO  NotImplementedException
-        public static string GetTestSetting(string name)
-        {
-            string value = Environment.GetEnvironmentVariable("DurableTaskTest" + name);
-            if (string.IsNullOrWhiteSpace(value))
-            {
-                value = name;
-            }
-
-            return value;
         }
 
         public static async Task<OrchestrationInstance> CreateOrchestrationInstanceAsync(

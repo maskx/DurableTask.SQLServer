@@ -1,6 +1,7 @@
 # DurableTask.SQLServer
 
-* No BolbStore
+* No BolbStore support
+* No JumpStart support
 
 ## TODO
 

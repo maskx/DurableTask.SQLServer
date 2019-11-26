@@ -27,14 +27,12 @@ namespace maskx.DurableTask.SQLServer
 
         private const int StatusPollingIntervalInSeconds = 2;
 
-        private readonly int MaxConcurrentWorkItems = 20;
-
         private readonly CancellationTokenSource cancellationTokenSource;
 
         private readonly IOrchestrationServiceInstanceStore instanceStore;
 
         /// <summary>
-        ///     Creates a new instance of the LocalOrchestrationService with default settings
+        /// Creates a new instance of the SQLServerOrchestrationService
         /// </summary>
         public SQLServerOrchestrationService(string connectionString,
             string hubName,
@@ -55,10 +53,6 @@ namespace maskx.DurableTask.SQLServer
             this.messageMagager = new MessageMagager(sqlSettings);
             this.cancellationTokenSource = new CancellationTokenSource();
         }
-
-        /******************************/
-        // management methods
-        /******************************/
 
         /// <inheritdoc />
         public Task CreateAsync()
@@ -112,8 +106,9 @@ namespace maskx.DurableTask.SQLServer
         }
 
         /// <inheritdoc />
-        public async Task StartAsync()
+        public Task StartAsync()
         {
+            return Task.CompletedTask;
         }
 
         /// <inheritdoc />
@@ -141,10 +136,6 @@ namespace maskx.DurableTask.SQLServer
             return false;
         }
 
-        /******************************/
-        // client methods
-        /******************************/
-
         /// <inheritdoc />
         public Task CreateTaskOrchestrationAsync(TaskMessage creationMessage)
         {
@@ -154,9 +145,7 @@ namespace maskx.DurableTask.SQLServer
         /// <inheritdoc />
         public async Task CreateTaskOrchestrationAsync(TaskMessage creationMessage, OrchestrationStatus[] dedupeStatuses)
         {
-            var ee = creationMessage.Event as ExecutionStartedEvent;
-
-            if (ee == null)
+            if (!(creationMessage.Event is ExecutionStartedEvent))
             {
                 throw new InvalidOperationException("Invalid creation task message");
             }
@@ -281,12 +270,8 @@ namespace maskx.DurableTask.SQLServer
             }
         }
 
-        /******************************/
-        // Task orchestration methods
-        /******************************/
-
         /// <inheritdoc />
-        public int MaxConcurrentTaskOrchestrationWorkItems => this.MaxConcurrentWorkItems;
+        public int MaxConcurrentTaskOrchestrationWorkItems => this.settings.TaskOrchestrationDispatcherSettings.MaxConcurrentOrchestrations;
 
         /// <inheritdoc />
         public async Task<TaskOrchestrationWorkItem> LockNextTaskOrchestrationWorkItemAsync(
@@ -334,7 +319,7 @@ namespace maskx.DurableTask.SQLServer
             OrchestrationState state)
         {
             OrchestrationRuntimeState runtimeState = workItem.OrchestrationRuntimeState;
-            if (await this.TrySetSessionStateAsync(workItem, newOrchestrationRuntimeState, runtimeState))
+            if (await this.TrySetSessionStateAsync(workItem, newOrchestrationRuntimeState))
             {
                 if (outboundMessages?.Count > 0)
                 {
@@ -380,7 +365,7 @@ namespace maskx.DurableTask.SQLServer
         }
 
         /// <inheritdoc />
-        public int TaskActivityDispatcherCount => 1;
+        public int TaskActivityDispatcherCount => this.settings.TaskActivityDispatcherSettings.DispatcherCount;
 
         /// <summary>
         ///  Should we carry over unexecuted raised events to the next iteration of an orchestration on ContinueAsNew
@@ -388,7 +373,7 @@ namespace maskx.DurableTask.SQLServer
         public BehaviorOnContinueAsNew EventBehaviourForContinueAsNew => BehaviorOnContinueAsNew.Carryover;
 
         /// <inheritdoc />
-        public int MaxConcurrentTaskActivityWorkItems => this.MaxConcurrentWorkItems;
+        public int MaxConcurrentTaskActivityWorkItems => this.settings.TaskActivityDispatcherSettings.MaxConcurrentActivities;
 
         /// <inheritdoc />
         public async Task ForceTerminateTaskOrchestrationAsync(string instanceId, string message)
@@ -427,7 +412,7 @@ namespace maskx.DurableTask.SQLServer
         }
 
         /// <inheritdoc />
-        public int TaskOrchestrationDispatcherCount => 1;
+        public int TaskOrchestrationDispatcherCount => this.settings.TaskOrchestrationDispatcherSettings.DispatcherCount;
 
         /******************************/
         // Task activity methods
@@ -505,8 +490,7 @@ namespace maskx.DurableTask.SQLServer
 
         private async Task<bool> TrySetSessionStateAsync(
             TaskOrchestrationWorkItem workItem,
-            OrchestrationRuntimeState newOrchestrationRuntimeState,
-            OrchestrationRuntimeState runtimeState
+            OrchestrationRuntimeState newOrchestrationRuntimeState
             )
         {
             if (newOrchestrationRuntimeState == null ||
@@ -643,8 +627,6 @@ namespace maskx.DurableTask.SQLServer
 
         private Task UpdateInstanceStoreAsync(ExecutionStartedEvent executionStartedEvent, long sequenceNumber)
         {
-            // TODO: Duplicate detection: Check if the orchestration already finished
-
             var orchestrationState = new OrchestrationState()
             {
                 Name = executionStartedEvent.Name,

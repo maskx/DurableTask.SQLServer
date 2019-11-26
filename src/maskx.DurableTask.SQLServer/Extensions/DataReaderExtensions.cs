@@ -20,7 +20,7 @@ namespace maskx.DurableTask.SQLServer
         public static T GetValue<T>(this IDataReader reader, int columnNo)
         {
             if (reader.IsDBNull(columnNo))
-                return default(T);
+                return default;
             var typeInfo = typeof(T).GetTypeInfo();
             if (typeInfo.IsGenericType && typeof(T).GetGenericTypeDefinition() == typeof(Nullable<>))
             {

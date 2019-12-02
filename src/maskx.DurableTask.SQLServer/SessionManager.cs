@@ -29,12 +29,12 @@ namespace maskx.DurableTask.SQLServer
             {
                 db.AddStatement(sql, new
                 {
-                    ExecutionId = message.OrchestrationInstance.ExecutionId,
-                    InstanceId = message.OrchestrationInstance.InstanceId,
+                    message.OrchestrationInstance.ExecutionId,
+                    message.OrchestrationInstance.InstanceId,
+                    message.SequenceNumber,
                     LockedUntilUtc = DBNull.Value,
                     Status = "Pending",
                     FireAt = GetFireTime(message),
-                    SequenceNumber = message.SequenceNumber,
                     OrchestrationInstance = dataConverter.Serialize(message.OrchestrationInstance),
                     Event = dataConverter.Serialize(message.Event),
                     ExtensionData = dataConverter.Serialize(message.ExtensionData)
@@ -54,12 +54,12 @@ namespace maskx.DurableTask.SQLServer
                 {
                     db.AddStatement(sql, new
                     {
-                        ExecutionId = msg.OrchestrationInstance.ExecutionId,
-                        InstanceId = msg.OrchestrationInstance.InstanceId,
+                        msg.OrchestrationInstance.ExecutionId,
+                        msg.OrchestrationInstance.InstanceId,
+                        msg.SequenceNumber,
                         LockedUntilUtc = DBNull.Value,
                         Status = "Pending",
                         FireAt = GetFireTime(msg),
-                        SequenceNumber = msg.SequenceNumber,
                         OrchestrationInstance = dataConverter.Serialize(msg.OrchestrationInstance),
                         Event = dataConverter.Serialize(msg.Event),
                         ExtensionData = dataConverter.Serialize(msg.ExtensionData)
@@ -317,7 +317,7 @@ END", new { table = settings.SessionMessageTableName });
         private const string SendMessageSQL = @"
 if @ExecutionId is not null
 begin
-    MERGE {0} TARGET
+    MERGE {0} with (serializable) TARGET
     USING (VALUES (@InstanceId)) AS SOURCE ([InstanceId])
     ON [Target].InstanceId = [Source].InstanceId
     WHEN NOT MATCHED THEN INSERT ([InstanceId],[LockedUntilUtc],[Status]) VALUES (@InstanceId,@LockedUntilUtc,@Status);

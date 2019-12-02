@@ -410,19 +410,19 @@ namespace maskx.DurableTask.SQLServer.Tracking
         }
 
         private const string MergeOrchestrationStateInstanceEntityQuery =
-            @"MERGE {0} [Target] USING (VALUES (@instanceId,@executionId,@name,@version,@orchestrationStatus,@createdTime,@completedTime,@lastUpdatedTime,@stateData)) as [Source](InstanceId,ExecutionId,[Name],[Version],OrchestrationStatus,CreatedTime,CompletedTime,LastUpdatedTime,StateData)
+            @"MERGE {0} with (serializable) [Target] USING (VALUES (@instanceId,@executionId,@name,@version,@orchestrationStatus,@createdTime,@completedTime,@lastUpdatedTime,@stateData)) as [Source](InstanceId,ExecutionId,[Name],[Version],OrchestrationStatus,CreatedTime,CompletedTime,LastUpdatedTime,StateData)
                 ON [Target].InstanceId = [Source].InstanceId AND [Target].ExecutionId = [Source].ExecutionId
               WHEN NOT MATCHED THEN INSERT (InstanceId,ExecutionId,[Name],[Version],OrchestrationStatus,CreatedTime,CompletedTime,LastUpdatedTime,StateData) VALUES (InstanceId,ExecutionId,[Name],[Version],OrchestrationStatus,CreatedTime,CompletedTime,LastUpdatedTime,StateData)
               WHEN MATCHED THEN UPDATE SET InstanceId = [Source].InstanceId,ExecutionId = [Source].ExecutionId,[Name] = [Source].[Name],[Version] = [Source].[Version],OrchestrationStatus = [Source].OrchestrationStatus,CreatedTime = [Source].CreatedTime,CompletedTime = [Source].CompletedTime,LastUpdatedTime = [Source].LastUpdatedTime,StateData = [Source].StateData;";
 
         private const string MergeOrchestrationWorkItemInstanceEntityQuery =
-            @"MERGE {0} [Target] USING (VALUES (@instanceId,@executionId,@sequenceNumber,@eventTimestamp,@historyEvent)) as [Source](InstanceId,ExecutionId,SequenceNumber,EventTimestamp,HistoryEvent)
+            @"MERGE {0} with (serializable) [Target] USING (VALUES (@instanceId,@executionId,@sequenceNumber,@eventTimestamp,@historyEvent)) as [Source](InstanceId,ExecutionId,SequenceNumber,EventTimestamp,HistoryEvent)
                 ON [Target].InstanceId = [Source].InstanceId AND [Target].ExecutionId = [Source].ExecutionId AND [Target].SequenceNumber = [Source].SequenceNumber
               WHEN NOT MATCHED THEN INSERT (InstanceId, ExecutionId, SequenceNumber, EventTimestamp, HistoryEvent) VALUES (InstanceId, ExecutionId, SequenceNumber, EventTimestamp, HistoryEvent)
               WHEN MATCHED THEN UPDATE SET EventTimestamp = [Source].EventTimestamp, HistoryEvent = [Source].HistoryEvent;";
 
         private const string MergeJumpStartEntitiesQuery = @"
-MERGE {0} [Target] USING (VALUES(@InstanceId, @ExecutionId, @SequenceNumber, @JumpStartTime, @CompletedTime, @CompressedSize, @CreatedTime, @Input, @LastUpdatedTime, @Name, @OrchestrationInstance, @OrchestrationStatus, @Output, @ParentInstance, @Size, @Status, @Tags, @Version)) AS SOURCE (InstanceId, ExecutionId, SequenceNumber, JumpStartTime, CompletedTime, CompressedSize, CreatedTime, Input, LastUpdatedTime, Name, OrchestrationInstance, OrchestrationStatus, Output, ParentInstance, Size, Status, Tags, Version)
+MERGE {0} with (serializable) [Target] USING (VALUES(@InstanceId, @ExecutionId, @SequenceNumber, @JumpStartTime, @CompletedTime, @CompressedSize, @CreatedTime, @Input, @LastUpdatedTime, @Name, @OrchestrationInstance, @OrchestrationStatus, @Output, @ParentInstance, @Size, @Status, @Tags, @Version)) AS SOURCE (InstanceId, ExecutionId, SequenceNumber, JumpStartTime, CompletedTime, CompressedSize, CreatedTime, Input, LastUpdatedTime, Name, OrchestrationInstance, OrchestrationStatus, Output, ParentInstance, Size, Status, Tags, Version)
 ON [Target].InstanceId = [Source].InstanceId AND [Target].ExecutionId = [Source].ExecutionId AND [Target].SequenceNumber = [Source].SequenceNumber
 WHEN NOT MATCHED THEN THEN Insert (InstanceId, ExecutionId, SequenceNumber, JumpStartTime, CompletedTime, CompressedSize, CreatedTime, Input, LastUpdatedTime, Name, OrchestrationInstance, OrchestrationStatus, Output, ParentInstance, Size, Status, Tags, Version) VALUES (@InstanceId, @ExecutionId, @SequenceNumber, @JumpStartTime, @CompletedTime, @CompressedSize, @CreatedTime, @Input, @LastUpdatedTime, @Name, @OrchestrationInstance, @OrchestrationStatus, @Output, @ParentInstance, @Size, @Status, @Tags, @Version)
 WHEN MATCHED THEN UPDATE SET JumpStartTime=[Source].JumpStartTime;

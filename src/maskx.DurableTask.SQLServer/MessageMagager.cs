@@ -3,7 +3,6 @@ using DurableTask.Core.History;
 using DurableTask.Core.Serializing;
 using maskx.DurableTask.SQLServer.Settings;
 using maskx.DurableTask.SQLServer.SQL;
-using maskx.DurableTask.SQLServer.Tracking;
 using Newtonsoft.Json;
 using System;
 using System.Runtime.Serialization;

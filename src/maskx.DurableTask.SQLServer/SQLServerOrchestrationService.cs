@@ -8,8 +8,6 @@ using DurableTask.Core.Tracking;
 using maskx.DurableTask.SQLServer.Settings;
 using System;
 using System.Collections.Generic;
-using System.Data.Common;
-using System.Data.SqlClient;
 using System.Diagnostics;
 using System.Linq;
 using System.Threading;
@@ -115,6 +113,7 @@ namespace maskx.DurableTask.SQLServer
         public Task StopAsync(bool isForced)
         {
             this.cancellationTokenSource.Cancel();
+            TraceHelper.Trace(TraceEventType.Information, "SQLServerOrchestrationService-Stop", () => string.Empty);
             return Task.FromResult<object>(null);
         }
 
@@ -342,12 +341,6 @@ namespace maskx.DurableTask.SQLServer
                 {
                     var trackingMessages = CreateTrackingMessagesAsync(runtimeState, 1);
                     await ProcessTrackingWorkItemAsync(trackingMessages);
-                    //if (newOrchestrationRuntimeState != null && runtimeState != newOrchestrationRuntimeState)
-                    //{
-                    //    var trackingMessages1 = CreateTrackingMessagesAsync(newOrchestrationRuntimeState, 1);
-                    //    await ProcessTrackingWorkItemAsync(trackingMessages1);
-                    //}
-                    // await CommitState(runtimeState, state);
                 }
             }
         }

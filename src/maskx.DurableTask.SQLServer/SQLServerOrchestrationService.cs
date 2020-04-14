@@ -277,13 +277,14 @@ namespace maskx.DurableTask.SQLServer
             TimeSpan receiveTimeout,
             CancellationToken cancellationToken)
         {
-            SQLServerOrchestrationSession taskSession = await this.sessionManager.AcceptSessionAsync(receiveTimeout,
-                CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, this.cancellationTokenSource.Token).Token);
+            using var cts1 = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, this.cancellationTokenSource.Token);
+
+            SQLServerOrchestrationSession taskSession = await this.sessionManager.AcceptSessionAsync(receiveTimeout, cts1.Token);
 
             if (taskSession == null)
             {
-                await Task.Delay(this.settings.IdleSleepMilliSeconds,
-                    CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, this.cancellationTokenSource.Token).Token);
+                using var cts2 = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, this.cancellationTokenSource.Token);
+                await Task.Delay(this.settings.IdleSleepMilliSeconds, cts2.Token);
                 return null;
             }
             long maxSequenceNumber = taskSession.Messages.Max(message => message.SequenceNumber);
@@ -414,13 +415,13 @@ namespace maskx.DurableTask.SQLServer
         /// <inheritdoc />
         public async Task<TaskActivityWorkItem> LockNextTaskActivityWorkItem(TimeSpan receiveTimeout, CancellationToken cancellationToken)
         {
-            TaskActivityWorkItem workItem = await this.messageMagager.ReceiveMessageAsync(receiveTimeout,
-                CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, this.cancellationTokenSource.Token).Token);
+            using var cts1 = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, this.cancellationTokenSource.Token);
+            TaskActivityWorkItem workItem = await this.messageMagager.ReceiveMessageAsync(receiveTimeout, cts1.Token);
 
             if (workItem == null)
             {
-                await Task.Delay(this.settings.IdleSleepMilliSeconds,
-                    CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, this.cancellationTokenSource.Token).Token);
+                using var cts2 = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, this.cancellationTokenSource.Token);
+                await Task.Delay(this.settings.IdleSleepMilliSeconds, cts2.Token);
                 return null;
             }
 

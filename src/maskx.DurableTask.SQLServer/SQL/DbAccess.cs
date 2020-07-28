@@ -10,9 +10,8 @@ namespace maskx.DurableTask.SQLServer.SQL
 {
     public class DbAccess : IDisposable
     {
-        private DbProviderFactory providerFactory;
         private DbConnection connection;
-        private DbCommand command;
+        private readonly DbCommand command;
 
         private enum RetryAction
         {
@@ -27,8 +26,6 @@ namespace maskx.DurableTask.SQLServer.SQL
 
         public DbAccess(DbProviderFactory dbProviderFactory, string connectionString)
         {
-            providerFactory = dbProviderFactory;
-
             connection = dbProviderFactory.CreateConnection();
             connection.ConnectionString = connectionString;
             this.command = connection.CreateCommand();
@@ -152,9 +149,7 @@ namespace maskx.DurableTask.SQLServer.SQL
             var retryAction = RetryAction.None;
             if (connection is SqlConnection)
             {
-                SqlException e = dbException as SqlException;
-
-                if (e == null)
+                if (!(dbException is SqlException e))
                     retryAction = RetryAction.None;
                 else
                     switch (e.Number)   // sys.messages
@@ -182,9 +177,7 @@ namespace maskx.DurableTask.SQLServer.SQL
 
         private void OnReconnecting()
         {
-            SqlConnection conn = connection as SqlConnection;
-
-            if (conn == null)
+            if (!(connection is SqlConnection conn))
                 return;
 
             SqlConnection.ClearPool(conn);

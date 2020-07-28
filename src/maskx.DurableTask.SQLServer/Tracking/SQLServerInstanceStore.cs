@@ -308,6 +308,7 @@ namespace maskx.DurableTask.SQLServer.Tracking
         /// <inheritdoc />
         public async Task<object> WriteEntitiesAsync(IEnumerable<InstanceEntityBase> entities)
         {
+           
             using (var db = new DbAccess(settings.ConnectionString))
             {
                 foreach (var entity in entities)

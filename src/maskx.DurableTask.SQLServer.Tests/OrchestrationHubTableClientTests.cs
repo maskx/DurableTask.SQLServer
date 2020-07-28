@@ -1,5 +1,4 @@
 ﻿using DurableTask.Core;
-using Microsoft.VisualStudio.TestPlatform.PlatformAbstractions.Interfaces;
 using System;
 using System.Threading.Tasks;
 using Xunit;
@@ -8,8 +7,8 @@ namespace maskx.DurableTask.SQLServer.Tests
 {
     public class OrchestrationHubTableClientTests : IDisposable
     {
-        private TaskHubClient client;
-        private TaskHubWorker taskHub;
+        private readonly TaskHubClient client;
+        private readonly TaskHubWorker taskHub;
 
         public OrchestrationHubTableClientTests()
         {

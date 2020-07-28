@@ -1,15 +1,12 @@
 ﻿using DurableTask.Core;
 using DurableTask.Core.Common;
 using DurableTask.Core.History;
-using DurableTask.Core.Settings;
 using maskx.DurableTask.SQLServer.Settings;
 using maskx.DurableTask.SQLServer.Tracking;
 using Microsoft.Extensions.Configuration;
 
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using System;
-using System.Data.Common;
-using System.Data.SqlClient;
 using System.Threading.Tasks;
 
 namespace maskx.DurableTask.SQLServer.Tests

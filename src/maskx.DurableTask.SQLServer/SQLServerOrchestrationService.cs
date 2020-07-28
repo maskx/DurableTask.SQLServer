@@ -171,7 +171,7 @@ namespace maskx.DurableTask.SQLServer
             }
             catch (Exception ex)
             {
-                TraceHelper.Trace(TraceEventType.Warning, "SQLServerOrchestrationService-CreateTaskOrchestrationAsync", $"Error while adding message to ServiceBus: {ex.ToString()}");
+                TraceHelper.Trace(TraceEventType.Warning, "SQLServerOrchestrationService-CreateTaskOrchestrationAsync", $"Error while adding message to ServiceBus: {ex}");
             }
         }
 
@@ -349,6 +349,8 @@ namespace maskx.DurableTask.SQLServer
         /// <inheritdoc />
         public async Task AbandonTaskOrchestrationWorkItemAsync(TaskOrchestrationWorkItem workItem)
         {
+            TraceHelper.Trace(TraceEventType.Critical, "SQLServerOrchestrationService-AbandonTaskOrchestrationWorkItemAsync",$"Orchestration()");
+
             await this.sessionManager.AbandonSessionAsync(workItem.InstanceId);
         }
 

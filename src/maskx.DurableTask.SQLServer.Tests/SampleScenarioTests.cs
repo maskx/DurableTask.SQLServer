@@ -11,10 +11,10 @@ namespace maskx.DurableTask.SQLServer.Tests
 {
     public class SampleScenarioTests : IDisposable
     {
-        private TaskHubClient client;
-        private TaskHubWorker fakeTaskHub;
-        private TaskHubWorker taskHub;
-        private TaskHubWorker taskHubNoCompression;
+        private readonly TaskHubClient client;
+        private readonly TaskHubWorker fakeTaskHub;
+        private readonly TaskHubWorker taskHub;
+        private readonly TaskHubWorker taskHubNoCompression;
 
         public SampleScenarioTests()
         {
@@ -790,7 +790,7 @@ namespace maskx.DurableTask.SQLServer.Tests
             public override Task<string> RunTask(OrchestrationContext context, object input)
             {
                 ChildInstanceId = context.OrchestrationInstance.InstanceId;
-                return Task.FromResult<string>(null);
+                return Task.FromResult<string>("123");
             }
         }
 
@@ -798,9 +798,9 @@ namespace maskx.DurableTask.SQLServer.Tests
         {
             public override async Task<string> RunTask(OrchestrationContext context, object input)
             {
-                await
-                    context.CreateSubOrchestrationInstanceWithRetry<string>(typeof(SimpleChildWorkflow), "foo_instance",
-                        new RetryOptions(TimeSpan.FromSeconds(5), 3), null);
+                var r = await
+                       context.CreateSubOrchestrationInstanceWithRetry<string>(typeof(SimpleChildWorkflow), "foo_instance",
+                           new RetryOptions(TimeSpan.FromSeconds(5), 3), null);
                 return null;
             }
         }

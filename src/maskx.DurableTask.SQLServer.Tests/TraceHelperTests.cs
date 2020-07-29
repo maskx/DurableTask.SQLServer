@@ -1,8 +1,6 @@
 ﻿using DurableTask.Core.Tracing;
 using System;
-using System.Collections.Generic;
 using System.Diagnostics.Tracing;
-using System.Text;
 using System.Threading.Tasks;
 using Xunit;
 
@@ -27,6 +25,7 @@ namespace maskx.DurableTask.SQLServer.Tests
             {
                 this.OnTracing = onTracing;
                 this.EnableEvents(DefaultEventSource.Log, EventLevel.Informational);
+           
             }
 
             protected override void OnEventWritten(EventWrittenEventArgs eventData)

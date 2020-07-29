@@ -2,6 +2,7 @@
 using DurableTask.Core.History;
 using DurableTask.Core.Serializing;
 using DurableTask.Core.Tracking;
+using maskx.DurableTask.SQLServer.Extensions;
 using maskx.DurableTask.SQLServer.SQL;
 using System;
 using System.Collections.Generic;
@@ -104,7 +105,8 @@ namespace maskx.DurableTask.SQLServer.Tracking
 
                 await db.ExecuteReaderAsync((reader, index) =>
                 {
-                    entities.Add(new OrchestrationStateInstanceEntity { State = dataConverter.Deserialize<OrchestrationState>(reader.GetString(0)) });
+                    entities.Add(new OrchestrationStateInstanceEntity {
+                        State = dataConverter.Deserialize<OrchestrationState>(((byte[])reader[0]).DecompressString()) });
                 });
             }
             return entities;
@@ -175,7 +177,7 @@ namespace maskx.DurableTask.SQLServer.Tracking
                         ExecutionId = reader.GetFieldValue<string>(1),
                         EventTimestamp = reader.GetFieldValue<DateTime>(2),
                         SequenceNumber = reader.GetFieldValue<long>(3),
-                        HistoryEvent = dataConverter.Deserialize<HistoryEvent>(reader.GetFieldValue<string>(4))
+                        HistoryEvent = dataConverter.Deserialize<HistoryEvent>(reader.GetFieldValue<byte[]>(4).DecompressString())
                     });
                 });
             }
@@ -208,7 +210,8 @@ namespace maskx.DurableTask.SQLServer.Tracking
                 var entities = new List<OrchestrationStateInstanceEntity>();
                 await db.ExecuteReaderAsync((reader, index) =>
                 {
-                    entities.Add(new OrchestrationStateInstanceEntity { State = dataConverter.Deserialize<OrchestrationState>(reader.GetFieldValue<string>(0)) });
+                    entities.Add(new OrchestrationStateInstanceEntity { 
+                        State = dataConverter.Deserialize<OrchestrationState>(reader.GetFieldValue<byte[]>(0).DecompressString()) });
                 });
                 return entities;
             }
@@ -227,7 +230,8 @@ namespace maskx.DurableTask.SQLServer.Tracking
                 var value = await db.ExecuteScalarAsync();
                 if (value == null)
                     return null;
-                return new OrchestrationStateInstanceEntity { State = dataConverter.Deserialize<OrchestrationState>(value.ToString()) };
+                return new OrchestrationStateInstanceEntity {
+                    State = dataConverter.Deserialize<OrchestrationState>(((byte[])value).DecompressString()) };
             }
         }
 
@@ -253,7 +257,7 @@ namespace maskx.DurableTask.SQLServer.Tracking
 	                        [CreatedTime]  DATETIME2 NOT NULL,
 	                        [CompletedTime] DATETIME2 NOT NULL,
 	                        [LastUpdatedTime] DATETIME2 NOT NULL,
-	                        [StateData] NVARCHAR(MAX) NOT NULL,
+	                        [StateData] varbinary(MAX) NOT NULL,
                             CONSTRAINT [PK_{settings.SchemaName}_{settings.HubName}{SqlServerInstanceStoreSettings.OrchestrationTable}_InstanceId_ExecutionId] PRIMARY KEY CLUSTERED ([InstanceId], [ExecutionId]))
                     END", new { table = settings.OrchestrationStateTableName });
 
@@ -264,7 +268,7 @@ namespace maskx.DurableTask.SQLServer.Tracking
 	                        [ExecutionId] NVARCHAR(50) NOT NULL,
 	                        [SequenceNumber] BIGINT NOT NULL,
 	                        [EventTimestamp] DATETIME2 NOT NULL,
-	                        [HistoryEvent] NVARCHAR(MAX) NOT NULL,
+	                        [HistoryEvent] varbinary(MAX) NOT NULL,
                             CONSTRAINT [PK_{settings.SchemaName}_{settings.HubName}{SqlServerInstanceStoreSettings.WorkitemTable}_InstanceId_ExecutionId_SequenceNumber] PRIMARY KEY CLUSTERED ([InstanceId], [ExecutionId], [SequenceNumber]))
                     END", new { table = settings.WorkItemTableName });
                 await db.ExecuteNonQueryAsync();
@@ -327,7 +331,7 @@ namespace maskx.DurableTask.SQLServer.Tracking
                                 createdTime = state.CreatedTime,
                                 completedTime = state.CompletedTime,
                                 lastUpdatedTime = state.LastUpdatedTime,
-                                stateData = dataConverter.Serialize(state)
+                                stateData = dataConverter.Serialize(state).CompressString()
                             });
                     }
                     else if (entity is OrchestrationWorkItemInstanceEntity workItem)
@@ -339,7 +343,7 @@ namespace maskx.DurableTask.SQLServer.Tracking
                                 executionId = workItem.ExecutionId,
                                 sequenceNumber = workItem.SequenceNumber,
                                 eventTimestamp = workItem.EventTimestamp,
-                                historyEvent = dataConverter.Serialize(workItem.HistoryEvent)
+                                historyEvent = dataConverter.Serialize(workItem.HistoryEvent).CompressString()
                             });
                     }
                     else

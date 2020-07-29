@@ -8,6 +8,7 @@
 * how to support abandon session and message should be investigated
 * Tracing & log support
 * add more unit test
+* using stored proc instead of  SQL string
 
 ### TaskSessionManager
 

@@ -1,10 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Data.Common;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace maskx.DurableTask.SQLServer.Settings
+﻿namespace maskx.DurableTask.SQLServer.Settings
 {
     internal class SQLServerSettings
     {

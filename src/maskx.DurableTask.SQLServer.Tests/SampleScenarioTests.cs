@@ -309,7 +309,7 @@ namespace maskx.DurableTask.SQLServer.Tests
 
             bool isCompleted = await TestHelpers.WaitForInstanceAsync(this.client, id, 120);
             Assert.True(isCompleted, TestHelpers.GetInstanceNotCompletedMessage(this.client, id, 120));
-            Assert.Equal(25.5, AverageCalculatorOrchestration.Result);
+            Assert.Equal(25.5d, AverageCalculatorOrchestration.Result);
         }
 
         private class AverageCalculatorOrchestration : TaskOrchestration<double, int[]>

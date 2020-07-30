@@ -12,12 +12,12 @@ using System.Threading.Tasks;
 
 namespace maskx.DurableTask.SQLServer
 {
-    internal class MessageMagager
+    internal class MessageManager
     {
         private readonly SQLServerSettings settings;
         private readonly DataConverter dataConverter = new JsonDataConverter();
 
-        public MessageMagager(SQLServerSettings settings)
+        public MessageManager(SQLServerSettings settings)
         {
             this.settings = settings;
         }

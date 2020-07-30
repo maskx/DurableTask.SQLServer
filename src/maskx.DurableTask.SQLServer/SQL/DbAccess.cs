@@ -1,9 +1,10 @@
-﻿using System;
+﻿using DurableTask.Core.Tracing;
+using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Data;
 using System.Data.Common;
 using System.Data.SqlClient;
-using System.Linq;
 using System.Threading.Tasks;
 
 namespace maskx.DurableTask.SQLServer.SQL
@@ -12,6 +13,8 @@ namespace maskx.DurableTask.SQLServer.SQL
     {
         private DbConnection connection;
         private readonly DbCommand command;
+        const int _MaxRetryCount = 2;
+        const int _IncreasingDelayRetry = 500;
 
         private enum RetryAction
         {
@@ -92,6 +95,60 @@ namespace maskx.DurableTask.SQLServer.SQL
             this.connection.Close();
         }
 
+        DbCommand CreateCommand(string commandText, int commandTimeout, CommandType commandType, Dictionary<string, object> parameters)
+        {
+            this.command.CommandType = commandType;
+            this.command.CommandText = commandText;
+
+            if (commandTimeout > 0)
+                this.command.CommandTimeout = commandTimeout;
+
+            foreach (var par in parameters)
+            {
+                this.command.AddParameter(par.Key, par.Value);
+            }
+            return this.command;
+        }
+        public async Task<DbDataReader> CreateReaderAsync(string commandText
+             , int commandTimeout
+             , CommandType commandType
+             , object parameters = null)
+        {
+            var dictionary = new Dictionary<string, object>();
+            if (parameters != null)
+            {
+                //convert object to dictionary
+                foreach (PropertyDescriptor descriptor in TypeDescriptor.GetProperties(parameters))
+                {
+                    dictionary.Add(descriptor.Name, descriptor.GetValue(parameters));
+                }
+            }
+
+            return await ExcuteWithRetry<DbDataReader>(() =>
+           {
+               var dbCmd = CreateCommand(commandText, commandTimeout, commandType, dictionary);
+               return dbCmd.ExecuteReaderAsync(CommandBehavior.CloseConnection);
+           });
+
+        }
+        public async Task<DbParameterCollection> ExecuteReaderAsync(string commandText, Action<DbDataReader, int> dataReader, object parameters = null, CommandType commandType = CommandType.StoredProcedure, int commandTimeout = 0)
+        {
+            using (DbDataReader reader = await CreateReaderAsync(commandText, commandTimeout, commandType, parameters))
+            {
+                if (dataReader == null)
+                    return null;
+                int resultSet = 0;
+                do
+                {
+                    while (reader.Read())
+                        dataReader(reader, resultSet);
+                    resultSet++;
+                } while (reader.NextResult());
+                reader.Close();
+                return this.command.Parameters;
+            }
+        }
+
         private void ReConnect()
         {
             if (connection != null)
@@ -118,7 +175,7 @@ namespace maskx.DurableTask.SQLServer.SQL
 
         private async Task<T> ExcuteWithRetry<T>(Func<Task<T>> func)
         {
-            for (int retry = 2; ; retry--)
+            for (int retry = 0; ; retry++)
             {
                 try
                 {
@@ -126,15 +183,14 @@ namespace maskx.DurableTask.SQLServer.SQL
                 }
                 catch (Exception e)
                 {
-                    if (retry <= 0)
+                    if (retry >= _MaxRetryCount)
                         throw;
-
                     switch (OnContextLost(e))
                     {
                         case RetryAction.Reconnect:
+                            await Task.Delay(retry * _IncreasingDelayRetry);
                             ReConnect();
                             break;
-
                         case RetryAction.RefreshParameters:
                             throw;
                         default:

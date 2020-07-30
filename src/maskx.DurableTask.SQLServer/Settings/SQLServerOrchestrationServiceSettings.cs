@@ -29,7 +29,7 @@ namespace maskx.DurableTask.SQLServer.Settings
         /// <summary>
         /// when no data fetch from SQL Server, the system will sleep the setting time before next try
         /// </summary>
-        public int IdleSleepMilliSeconds { get; set; } = 1;
+        public int IdleSleepMilliSeconds { get; set; } = 5000;
 
         /// <summary>
         /// the schema name of the SQLServerOrchestratorService tables

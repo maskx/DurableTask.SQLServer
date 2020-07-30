@@ -69,36 +69,49 @@ namespace maskx.DurableTask.SQLServer
         public async Task<SQLServerOrchestrationSession> AcceptSessionAsync(TimeSpan receiveTimeout, CancellationToken cancellationToken)
         {
             SQLServerOrchestrationSession t = null;
-            using (var db = new DbAccess(settings.ConnectionString))
+            using DbAccess db = new DbAccess(settings.ConnectionString);
+
+            db.AddStatement(string.Format(AcceptSessionSql, settings.SessionTableName, settings.SessionMessageTableName), new
             {
-                db.AddStatement(string.Format(AcceptSessionSql, settings.SessionTableName, settings.SessionMessageTableName), new
+                LockedUntilUtc = DateTime.UtcNow.AddSeconds(this.settings.SessionLockedSeconds)
+            });
+            try
+            {
+                await db.ExecuteReaderAsync((reader) =>
                 {
-                    LockedUntilUtc = DateTime.UtcNow.AddSeconds(this.settings.SessionLockedSeconds)
-                });
-                try
-                {
-                    await db.ExecuteReaderAsync((reader) =>
+                    int readerCount = 0;
+
+                    while (!reader.Read() && readerCount < 3)
                     {
-                        int readerCount = 0;
-
-                        while (!reader.Read() && readerCount < 3)
+                        reader.NextResult();
+                        readerCount++;
+                    }
+                    if (readerCount < 3)
+                    {
+                        t = new SQLServerOrchestrationSession()
                         {
-                            reader.NextResult();
-                            readerCount++;
+                            InstanceId = reader["InstanceId"].ToString(),
+                            LockedUntilUtc = reader.GetDateTime(1),
+                            SessionState = reader.IsDBNull(3) ? new OrchestrationRuntimeState() : DeserializeOrchestrationRuntimeState((byte[])reader["SessionState"])
+                        };
+                        if (!reader.NextResult())
+                        {
+                            throw new Exception("get a session without message");
                         }
-                        if (readerCount < 3)
-                        {
-                            t = new SQLServerOrchestrationSession()
-                            {
-                                InstanceId = reader["InstanceId"].ToString(),
-                                LockedUntilUtc = reader.GetDateTime(1),
-                                SessionState = reader.IsDBNull(3) ? new OrchestrationRuntimeState() : DeserializeOrchestrationRuntimeState((byte[])reader["SessionState"])
-                            };
-                            if (!reader.NextResult())
-                            {
-                                throw new Exception("get a session without message");
-                            }
 
+                        while (reader.Read())
+                        {
+                            var m = new TaskMessage()
+                            {
+                                SequenceNumber = reader.GetInt64(0),
+                                OrchestrationInstance = reader.IsDBNull(1) ? null : dataConverter.Deserialize<OrchestrationInstance>(reader.GetString(1)),
+                                Event = reader.IsDBNull(2) ? null : JsonConvert.DeserializeObject<HistoryEvent>(((byte[])reader[2]).DecompressString(), new JsonSerializerSettings { TypeNameHandling = TypeNameHandling.Auto }),
+                                ExtensionData = reader.IsDBNull(3) ? null : dataConverter.Deserialize<ExtensionDataObject>(((byte[])reader[3]).DecompressString())
+                            };
+                            t.Messages.Add(m);
+                        }
+                        if (reader.NextResult())
+                        {
                             while (reader.Read())
                             {
                                 var m = new TaskMessage()
@@ -108,42 +121,29 @@ namespace maskx.DurableTask.SQLServer
                                     Event = reader.IsDBNull(2) ? null : JsonConvert.DeserializeObject<HistoryEvent>(((byte[])reader[2]).DecompressString(), new JsonSerializerSettings { TypeNameHandling = TypeNameHandling.Auto }),
                                     ExtensionData = reader.IsDBNull(3) ? null : dataConverter.Deserialize<ExtensionDataObject>(((byte[])reader[3]).DecompressString())
                                 };
+                                if (string.IsNullOrEmpty(m.OrchestrationInstance.ExecutionId))
+                                    m.OrchestrationInstance.ExecutionId = t.SessionState.OrchestrationInstance.ExecutionId;
                                 t.Messages.Add(m);
                             }
-                            if (reader.NextResult())
-                            {
-                                while (reader.Read())
-                                {
-                                    var m = new TaskMessage()
-                                    {
-                                        SequenceNumber = reader.GetInt64(0),
-                                        OrchestrationInstance = reader.IsDBNull(1) ? null : dataConverter.Deserialize<OrchestrationInstance>(reader.GetString(1)),
-                                        Event = reader.IsDBNull(2) ? null : JsonConvert.DeserializeObject<HistoryEvent>(((byte[])reader[2]).DecompressString(), new JsonSerializerSettings { TypeNameHandling = TypeNameHandling.Auto }),
-                                        ExtensionData = reader.IsDBNull(3) ? null : dataConverter.Deserialize<ExtensionDataObject>(((byte[])reader[3]).DecompressString())
-                                    };
-                                    if (string.IsNullOrEmpty(m.OrchestrationInstance.ExecutionId))
-                                        m.OrchestrationInstance.ExecutionId = t.SessionState.OrchestrationInstance.ExecutionId;
-                                    t.Messages.Add(m);
-                                }
-                            }
                         }
-                    });
-                }
-                catch (Exception ex)
-                {
-                    throw ex;
-                }
+                    }
+                });
             }
+            catch (Exception ex)
+            {
+                throw ex;
+            }
+
             return t;
         }
 
         public async Task AbandonSessionAsync(string id)
-        {           
+        {
             //TODO: abandon session
             using var db = new DbAccess(settings.ConnectionString);
             db.AddStatement(string.Format(AbandonSessionSql, settings.SessionTableName, settings.SessionMessageTableName), new
             {
-                InstanceId=id
+                InstanceId = id
             });
             await db.ExecuteNonQueryAsync();
         }

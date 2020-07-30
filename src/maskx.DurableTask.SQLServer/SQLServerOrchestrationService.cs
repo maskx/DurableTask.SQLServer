@@ -20,7 +20,7 @@ namespace maskx.DurableTask.SQLServer
         private static readonly DataConverter DataConverter = new JsonDataConverter();
 
         private readonly SessionManager sessionManager;
-        private readonly MessageMagager messageMagager;
+        private readonly MessageManager messageMagager;
         private readonly SQLServerOrchestrationServiceSettings settings;
 
         private const int StatusPollingIntervalInSeconds = 2;
@@ -48,7 +48,7 @@ namespace maskx.DurableTask.SQLServer
                 ConnectionString = connectionString
             };
             this.sessionManager = new SessionManager(sqlSettings);
-            this.messageMagager = new MessageMagager(sqlSettings);
+            this.messageMagager = new MessageManager(sqlSettings);
             this.cancellationTokenSource = new CancellationTokenSource();
         }
 

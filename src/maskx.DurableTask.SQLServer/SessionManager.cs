@@ -281,6 +281,7 @@ END", new { table = settings.SessionMessageTableName });
             return JsonConvert.SerializeObject(runtimeState.Events,
                 new JsonSerializerSettings { TypeNameHandling = TypeNameHandling.Auto }).CompressString();
         }
+
         private OrchestrationRuntimeState DeserializeOrchestrationRuntimeState(byte[] serializedState)
         {
             var events = JsonConvert.DeserializeObject<IList<HistoryEvent>>(serializedState.DecompressString(), new JsonSerializerSettings { TypeNameHandling = TypeNameHandling.Auto });
@@ -330,7 +331,7 @@ COMMIT TRANSACTION
         private const string CompleteSessionStateSql = @"
 BEGIN TRANSACTION
     delete {1} where InstanceId=@InstanceId  and Status='Locked';
-    update {0}
+    update {0} WITH(READPAST)
     set SessionState=@SessionState,[Status]='Pending',LockedUntilUtc=@LockedUntilUtc
     where InstanceId=@InstanceId
 COMMIT TRANSACTION
@@ -341,16 +342,16 @@ declare @InstanceId nvarchar(50)
 declare @ExecutionId nvarchar(50)
 
 BEGIN TRANSACTION
-    update top(1) {0}
+    update top(1) {0} WITH(READPAST)
     set @InstanceId=InstanceId,[Status]='Locked',LockedUntilUtc=@LockedUntilUtc
     output INSERTED.InstanceId,INSERTED.LockedUntilUtc,INSERTED.[Status],INSERTED.SessionState
     where [Status]='Pending'
     and [SessionState] is not null
-    and (select min(FireAt) from {1} where {0}.InstanceId={1}.InstanceId and FireAt is not null and [Status]='Pending') <=getutcdate()
+    and (select min(FireAt) from {1} WITH(READPAST) where {0}.InstanceId={1}.InstanceId and FireAt is not null and [Status]='Pending') <=getutcdate()
 
     if @InstanceId is not null
     begin
-        update {1}
+        update {1} WITH(READPAST)
         set [Status]='Locked',LockedUntilUtc=@LockedUntilUtc
         output INSERTED.SequenceNumber,INSERTED.OrchestrationInstance,INSERTED.[Event],INSERTED.ExtensionData
         where InstanceId=@InstanceId
@@ -362,18 +363,18 @@ COMMIT TRANSACTION
 
     if @InstanceId is null
     begin
-        update top(1) {0}
+        update top(1) {0} WITH(READPAST)
         set @InstanceId=InstanceId,[Status]='Locked',LockedUntilUtc=@LockedUntilUtc
         output INSERTED.InstanceId,INSERTED.LockedUntilUtc,INSERTED.[Status],INSERTED.SessionState
         where [Status]='Pending'
             and (select count(0) from {1} where {1}.InstanceId={0}.InstanceId
-                and FireAt is null 
+                and FireAt is null
                 and [Status]='Pending')>0
     end
 
     if @InstanceId is null
     begin
-        update top(1) {0}
+        update top(1) {0} WITH(READPAST)
         set @InstanceId=InstanceId,[Status]='Locked',LockedUntilUtc=@LockedUntilUtc
         output INSERTED.InstanceId,INSERTED.LockedUntilUtc,INSERTED.[Status],INSERTED.SessionState--,INSERTED.ExecutionId
         where [Status]='Locked'
@@ -382,7 +383,7 @@ COMMIT TRANSACTION
 
     if @InstanceId is not null
     begin
-        update {1}
+        update {1} WITH(READPAST)
         set [Status]='Locked',LockedUntilUtc=@LockedUntilUtc,@ExecutionId=ExecutionId
         output INSERTED.SequenceNumber,INSERTED.OrchestrationInstance,INSERTED.[Event],INSERTED.ExtensionData
         where InstanceId=@InstanceId
@@ -393,7 +394,7 @@ COMMIT TRANSACTION
 
     if @ExecutionId is null
     begin
-        update top(1) {1}
+        update top(1) {1} WITH(READPAST)
         set [Status]='Locked',LockedUntilUtc=@LockedUntilUtc,@ExecutionId=ExecutionId
         output INSERTED.SequenceNumber,INSERTED.OrchestrationInstance,INSERTED.[Event],INSERTED.ExtensionData
         where InstanceId=@InstanceId
@@ -402,10 +403,11 @@ COMMIT TRANSACTION
     end
 COMMIT TRANSACTION
 ";
+
         private const string AbandonSessionSql = @"
 BEGIN TRANSACTION
-    update {1} set Status=N'Abandon' where InstanceId=@InstanceId and Status=N'Locked'
-    update {0} set Status=N'Pending' where InstanceId=@InstanceId
+    update {1} WITH(READPAST) set Status=N'Abandon' where InstanceId=@InstanceId and Status=N'Locked'
+    update {0} WITH(READPAST) set Status=N'Pending' where InstanceId=@InstanceId
 COMMIT TRANSACTION
 ";
     }

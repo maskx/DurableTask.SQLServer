@@ -91,7 +91,7 @@ VALUES
         public async Task AbandonMessageAsync(TaskActivityWorkItem workItem)
         {
             string sql = $@"
-UPDATE {this.settings.MessageTableName}
+UPDATE {this.settings.MessageTableName} WITH(READPAST)
 SET [Status]=N'Abandon',LockedUntilUtc=@LockedUntilUtc
 WHERE Id=@Id
 ";
@@ -107,7 +107,7 @@ WHERE Id=@Id
         public async Task<DateTime> RenewLock(TaskActivityWorkItem workItem)
         {
             string sql = $@"
-UPDATE {this.settings.MessageTableName}
+UPDATE {this.settings.MessageTableName} WITH(READPAST)
 SET LockedUntilUtc=@LockedUntilUtc
 WHERE Id=@Id
 ";
@@ -167,7 +167,7 @@ END", new { table = settings.MessageTableName });
 
 declare @Id nvarchar(50)
 BEGIN TRANSACTION
-    update top(1) {0}
+    update top(1) {0} WITH(READPAST)
     set @Id=Id,[Status]='locked',LockedUntilUtc=@LockedUntilUtc
     output INSERTED.SequenceNumber,INSERTED.OrchestrationInstance,INSERTED.[Event],INSERTED.ExtensionData,INSERTED.LockedUntilUtc,INSERTED.Id
     where [Status]='Locked'
@@ -175,7 +175,7 @@ BEGIN TRANSACTION
 
     if @Id is null
     begin
-        update top(1) {0}
+        update top(1) {0} WITH(READPAST)
         set [Status]='locked',LockedUntilUtc=@LockedUntilUtc
         output INSERTED.SequenceNumber,INSERTED.OrchestrationInstance,INSERTED.[Event],INSERTED.ExtensionData,INSERTED.LockedUntilUtc,INSERTED.Id
         where [Status]='Pending'

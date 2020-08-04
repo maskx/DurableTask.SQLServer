@@ -2,6 +2,7 @@
 {
     internal class SQLServerSettings
     {
+        internal const string CreateSessionSP = "_CreateSession";
         internal const string SessionTable = "_Session";
         internal const string SessionMessageTable = "_SessionMessage";
         internal const string MessageTable = "_Message";
@@ -15,6 +16,7 @@
         public string SessionMessageTableName => $"[{SchemaName}].[{HubName}{SessionMessageTable}]";
         public string MessageTableName => $"[{SchemaName}].[{HubName}{MessageTable}]";
         public string LockNextOrchestrationCommandName => $"[{SchemaName}].[{HubName}{LockNextOrchestrationCommand}]";
+        public string CreateSessionSPName => $"[{SchemaName}].[{HubName}{CreateSessionSP}]";
 
         /// <summary>
         /// Orchestration session locked time

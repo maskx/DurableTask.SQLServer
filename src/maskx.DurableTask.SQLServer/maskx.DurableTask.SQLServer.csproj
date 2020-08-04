@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>netstandard2.0</TargetFramework>
@@ -9,15 +9,24 @@
     <RepositoryUrl>https://github.com/maskx/DurableTask.SQLServer</RepositoryUrl>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <UserSecretsId>687894a2-15de-4610-a794-cffa867ba36a</UserSecretsId>
+    <Nullable>enable</Nullable>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Remove="Scripts\sproces\CreateSession.sql" />
+    <None Remove="Scripts\sproces\QuerySingleOrchestration.sql" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Scripts\drop-schema.sql" />
+    <EmbeddedResource Include="Scripts\create-schema.sql" />
+    <EmbeddedResource Include="Scripts\sproces\QuerySingleOrchestration.sql" />
+    <EmbeddedResource Include="Scripts\sproces\CreateSession.sql" />
+    <EmbeddedResource Include="Scripts\sprocs.sql" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Azure.DurableTask.Core" Version="2.3.0" />
     <PackageReference Include="Newtonsoft.Json" Version="12.0.3" />
     <PackageReference Include="System.Data.SqlClient" Version="4.8.1" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Folder Include="Stats\" />
   </ItemGroup>
 </Project>

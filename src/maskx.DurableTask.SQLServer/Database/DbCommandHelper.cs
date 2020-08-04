@@ -5,7 +5,7 @@ using System.Data;
 using System.Data.Common;
 using System.Text;
 
-namespace maskx.DurableTask.SQLServer.SQL
+namespace maskx.DurableTask.SQLServer.Database
 {
     /// <summary>
     /// Intended for internal use only; not all edge cases are handled, but these extension methods will work correctly for the queries defined in this assembly and results in more readable code.

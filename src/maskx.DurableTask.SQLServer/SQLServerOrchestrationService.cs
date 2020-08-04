@@ -1,5 +1,5 @@
 ﻿using DurableTask.Core;
-using DurableTask.Core.Common;
+using DTCommon = DurableTask.Core.Common;
 using DurableTask.Core.Exceptions;
 using DurableTask.Core.History;
 using DurableTask.Core.Serializing;
@@ -12,6 +12,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using maskx.DurableTask.SQLServer.Utils;
 
 namespace maskx.DurableTask.SQLServer
 {
@@ -22,7 +23,7 @@ namespace maskx.DurableTask.SQLServer
         private readonly SessionManager sessionManager;
         private readonly MessageManager messageMagager;
         private readonly SQLServerOrchestrationServiceSettings settings;
-
+        private readonly SQLServerSettings sqlSettings;
         private const int StatusPollingIntervalInSeconds = 2;
 
         private readonly CancellationTokenSource cancellationTokenSource;
@@ -39,7 +40,7 @@ namespace maskx.DurableTask.SQLServer
         {
             this.settings = settings;
             this.instanceStore = instanceStore;
-            SQLServerSettings sqlSettings = new SQLServerSettings()
+            sqlSettings = new SQLServerSettings()
             {
                 SchemaName = settings.SchemaName,
                 HubName = hubName,
@@ -61,27 +62,13 @@ namespace maskx.DurableTask.SQLServer
         /// <inheritdoc />
         public async Task CreateAsync(bool recreateInstanceStore)
         {
-            List<Task> tasks = new List<Task>();
-            if (this.instanceStore != null)
-            {
-                tasks.Add(this.instanceStore.InitializeStoreAsync(recreateInstanceStore));
-            }
-            tasks.Add(this.sessionManager.InitializeSessionManagerAsync(true));
-            tasks.Add(this.messageMagager.InitializeMessageManagerAsync(true));
-            await Task.WhenAll(tasks);
+            await SqlUtils.InitializeDatabase(true, sqlSettings);
         }
 
         /// <inheritdoc />
         public async Task CreateIfNotExistsAsync()
         {
-            List<Task> tasks = new List<Task>();
-            if (this.instanceStore != null)
-            {
-                tasks.Add(this.instanceStore.InitializeStoreAsync(false));
-            }
-            tasks.Add(this.sessionManager.InitializeSessionManagerAsync(false));
-            tasks.Add(this.messageMagager.InitializeMessageManagerAsync(false));
-            await Task.WhenAll(tasks);
+            await SqlUtils.InitializeDatabase(false, sqlSettings);
         }
 
         /// <inheritdoc />
@@ -93,14 +80,7 @@ namespace maskx.DurableTask.SQLServer
         /// <inheritdoc />
         public async Task DeleteAsync(bool deleteInstanceStore)
         {
-            List<Task> tasks = new List<Task>();
-            if (deleteInstanceStore && this.instanceStore != null)
-            {
-                tasks.Add(this.instanceStore.DeleteStoreAsync());
-            }
-            tasks.Add(this.sessionManager.DeleteSessionManagerAsync());
-            tasks.Add(this.messageMagager.DeleteMessageManagerAsync());
-            await Task.WhenAll(tasks);
+            await SqlUtils.ClearDatabaseAsync(sqlSettings);
         }
 
         /// <inheritdoc />
@@ -147,23 +127,6 @@ namespace maskx.DurableTask.SQLServer
             if (!(creationMessage.Event is ExecutionStartedEvent))
             {
                 throw new InvalidOperationException("Invalid creation task message");
-            }
-            if (this.instanceStore != null)
-            {
-                OrchestrationState latestState = (await GetOrchestrationStateAsync(creationMessage.OrchestrationInstance.InstanceId, false)).FirstOrDefault();
-                if (latestState != null && (dedupeStatuses == null || dedupeStatuses.Contains(latestState.OrchestrationStatus)))
-                {
-                    // An orchestration with same instance id is already running
-                    throw new OrchestrationAlreadyExistsException($"An orchestration with id '{creationMessage.OrchestrationInstance.InstanceId}' already exists. It is in state {latestState.OrchestrationStatus}");
-                }
-                if (this.settings.JumpStartEnabled)
-                {
-                    //TODO: await UpdateJumpStartStoreAsync(creationMessage);
-                }
-                else
-                {
-                    await UpdateInstanceStoreAsync(creationMessage.Event as ExecutionStartedEvent, creationMessage.SequenceNumber);
-                }
             }
             try
             {
@@ -349,7 +312,7 @@ namespace maskx.DurableTask.SQLServer
         /// <inheritdoc />
         public async Task AbandonTaskOrchestrationWorkItemAsync(TaskOrchestrationWorkItem workItem)
         {
-            TraceHelper.Trace(TraceEventType.Critical, "SQLServerOrchestrationService-AbandonTaskOrchestrationWorkItemAsync",$"Orchestration()");
+            TraceHelper.Trace(TraceEventType.Critical, "SQLServerOrchestrationService-AbandonTaskOrchestrationWorkItemAsync", $"Orchestration()");
 
             await this.sessionManager.AbandonSessionAsync(workItem.InstanceId);
         }
@@ -546,7 +509,7 @@ namespace maskx.DurableTask.SQLServer
             {
                 await this.instanceStore.WriteEntitiesAsync(historyEntities);
             }
-            catch (Exception e) when (!Utils.IsFatal(e))
+            catch (Exception e) when (!DTCommon.Utils.IsFatal(e))
             {
                 TraceEntities(TraceEventType.Critical, $"Failed to write history entity: {e}", historyEntities, GetNormalizedWorkItemEvent);
                 throw;
@@ -564,7 +527,7 @@ namespace maskx.DurableTask.SQLServer
                     await this.instanceStore.WriteEntitiesAsync(new List<OrchestrationStateInstanceEntity> { stateEntity });
                 }
             }
-            catch (Exception e) when (!Utils.IsFatal(e))
+            catch (Exception e) when (!DTCommon.Utils.IsFatal(e))
             {
                 TraceEntities(TraceEventType.Critical, $"Failed to write state entity: {e}", stateEntities, GetNormalizedStateEvent);
                 throw;
@@ -584,7 +547,7 @@ namespace maskx.DurableTask.SQLServer
 
         private string GetNormalizedWorkItemEvent(int index, string message, OrchestrationWorkItemInstanceEntity entity)
         {
-            string serializedHistoryEvent = Utils.EscapeJson(DataConverter.Serialize(entity.HistoryEvent));
+            string serializedHistoryEvent = DTCommon.Utils.EscapeJson(DataConverter.Serialize(entity.HistoryEvent));
             int historyEventLength = serializedHistoryEvent.Length;
             int maxLen = this.instanceStore?.MaxHistoryEntryLength ?? int.MaxValue;
 
@@ -605,7 +568,7 @@ namespace maskx.DurableTask.SQLServer
 
         private string GetNormalizedStateEvent(int index, string message, OrchestrationStateInstanceEntity stateEntity)
         {
-            string serializedHistoryEvent = Utils.EscapeJson(DataConverter.Serialize(stateEntity.State));
+            string serializedHistoryEvent = DTCommon.Utils.EscapeJson(DataConverter.Serialize(stateEntity.State));
             int historyEventLength = serializedHistoryEvent.Length;
 
             int maxLen = this.instanceStore?.MaxHistoryEntryLength ?? int.MaxValue;
@@ -633,7 +596,7 @@ namespace maskx.DurableTask.SQLServer
                 Tags = executionStartedEvent.Tags,
                 CreatedTime = executionStartedEvent.Timestamp,
                 LastUpdatedTime = DateTime.UtcNow,
-                CompletedTime = DateTimeUtils.MinDateTime,
+                CompletedTime = DTCommon.DateTimeUtils.MinDateTime,
                 ParentInstance = executionStartedEvent.ParentInstance
             };
 
@@ -667,7 +630,7 @@ namespace maskx.DurableTask.SQLServer
             {
                 newMessages.Add(new TaskMessage
                 {
-                    Event = new HistoryStateEvent(-1, Utils.BuildOrchestrationState(runtimeState)),
+                    Event = new HistoryStateEvent(-1, DTCommon.Utils.BuildOrchestrationState(runtimeState)),
                     SequenceNumber = 999,
                     OrchestrationInstance = runtimeState.OrchestrationInstance
                 });

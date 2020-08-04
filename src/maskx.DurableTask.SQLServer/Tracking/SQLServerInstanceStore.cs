@@ -3,7 +3,7 @@ using DurableTask.Core.History;
 using DurableTask.Core.Serializing;
 using DurableTask.Core.Tracking;
 using maskx.DurableTask.SQLServer.Extensions;
-using maskx.DurableTask.SQLServer.SQL;
+using maskx.DurableTask.SQLServer.Database;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -37,7 +37,7 @@ namespace maskx.DurableTask.SQLServer.Tracking
         /// <inheritdoc />
         public async Task<object> DeleteEntitiesAsync(IEnumerable<InstanceEntityBase> entities)
         {
-            using (var db = new DbAccess(settings.ConnectionString))
+            using (var db = new SQLServerAccess(settings.ConnectionString))
             {
                 foreach (var entity in entities)
                 {
@@ -63,7 +63,7 @@ namespace maskx.DurableTask.SQLServer.Tracking
         /// <inheritdoc />
         public async Task<object> DeleteJumpStartEntitiesAsync(IEnumerable<OrchestrationJumpStartInstanceEntity> entities)
         {
-            using (var db = new DbAccess(settings.ConnectionString))
+            using (var db = new SQLServerAccess(settings.ConnectionString))
             {
                 var sql = String.Format("DELETE FROM {0} WHERE InstanceId = @InstanceId AND ExecutionId = @ExecutionId;", settings.JumpStartTableWithSchema);
 
@@ -83,7 +83,7 @@ namespace maskx.DurableTask.SQLServer.Tracking
         /// <inheritdoc />
         public async Task DeleteStoreAsync()
         {
-            using (var db = new DbAccess(settings.ConnectionString))
+            using (var db = new SQLServerAccess(settings.ConnectionString))
             {
                 db.AddStatement($"DROP TABLE IF EXISTS {settings.WorkItemTableName}");
                 db.AddStatement($"DROP TABLE IF EXISTS {settings.OrchestrationStateTableName}");
@@ -95,7 +95,7 @@ namespace maskx.DurableTask.SQLServer.Tracking
         public async Task<IEnumerable<OrchestrationStateInstanceEntity>> GetEntitiesAsync(string instanceId, string executionId)
         {
             var entities = new List<OrchestrationStateInstanceEntity>();
-            using (var db = new DbAccess(settings.ConnectionString))
+            using (var db = new SQLServerAccess(settings.ConnectionString))
             {
                 db.AddStatement($"SELECT StateData FROM {settings.OrchestrationStateTableName} WHERE InstanceId = @instanceId AND ExecutionId = @executionId", new
                 {
@@ -105,8 +105,10 @@ namespace maskx.DurableTask.SQLServer.Tracking
 
                 await db.ExecuteReaderAsync((reader, index) =>
                 {
-                    entities.Add(new OrchestrationStateInstanceEntity {
-                        State = dataConverter.Deserialize<OrchestrationState>(((byte[])reader[0]).DecompressString()) });
+                    entities.Add(new OrchestrationStateInstanceEntity
+                    {
+                        State = dataConverter.Deserialize<OrchestrationState>(((byte[])reader[0]).DecompressString())
+                    });
                 });
             }
             return entities;
@@ -117,7 +119,7 @@ namespace maskx.DurableTask.SQLServer.Tracking
         {
             var entities = new List<OrchestrationJumpStartInstanceEntity>();
 
-            using (var db = new DbAccess(settings.ConnectionString))
+            using (var db = new SQLServerAccess(settings.ConnectionString))
             {
                 string sql = String.Format("SELECT TOP({0}) * FROM {1} ", top, settings.JumpStartTableWithSchema);
                 db.AddStatement(sql);
@@ -161,7 +163,7 @@ namespace maskx.DurableTask.SQLServer.Tracking
         public async Task<IEnumerable<OrchestrationWorkItemInstanceEntity>> GetOrchestrationHistoryEventsAsync(string instanceId, string executionId)
         {
             var entities = new List<OrchestrationWorkItemInstanceEntity>();
-            using (var db = new DbAccess(settings.ConnectionString))
+            using (var db = new SQLServerAccess(settings.ConnectionString))
             {
                 db.AddStatement($"SELECT InstanceId, ExecutionId, EventTimestamp, SequenceNumber, HistoryEvent FROM {settings.WorkItemTableName} WHERE InstanceId = @instanceId AND ExecutionId = @executionId ORDER BY SequenceNumber", new
                 {
@@ -187,7 +189,7 @@ namespace maskx.DurableTask.SQLServer.Tracking
         /// <inheritdoc />
         public async Task<IEnumerable<OrchestrationStateInstanceEntity>> GetOrchestrationStateAsync(string instanceId, bool allInstances)
         {
-            using (var db = new DbAccess(settings.ConnectionString))
+            using (var db = new SQLServerAccess(settings.ConnectionString))
             {
                 string sql = string.Empty;
                 if (allInstances == false)
@@ -210,8 +212,10 @@ namespace maskx.DurableTask.SQLServer.Tracking
                 var entities = new List<OrchestrationStateInstanceEntity>();
                 await db.ExecuteReaderAsync((reader, index) =>
                 {
-                    entities.Add(new OrchestrationStateInstanceEntity { 
-                        State = dataConverter.Deserialize<OrchestrationState>(reader.GetFieldValue<byte[]>(0).DecompressString()) });
+                    entities.Add(new OrchestrationStateInstanceEntity
+                    {
+                        State = dataConverter.Deserialize<OrchestrationState>(reader.GetFieldValue<byte[]>(0).DecompressString())
+                    });
                 });
                 return entities;
             }
@@ -220,7 +224,7 @@ namespace maskx.DurableTask.SQLServer.Tracking
         /// <inheritdoc />
         public async Task<OrchestrationStateInstanceEntity> GetOrchestrationStateAsync(string instanceId, string executionId)
         {
-            using (var db = new DbAccess(settings.ConnectionString))
+            using (var db = new SQLServerAccess(settings.ConnectionString))
             {
                 db.AddStatement($"SELECT TOP 1 StateData FROM {settings.OrchestrationStateTableName} WHERE InstanceId = @instanceId AND ExecutionId = @executionId", new
                 {
@@ -230,8 +234,10 @@ namespace maskx.DurableTask.SQLServer.Tracking
                 var value = await db.ExecuteScalarAsync();
                 if (value == null)
                     return null;
-                return new OrchestrationStateInstanceEntity {
-                    State = dataConverter.Deserialize<OrchestrationState>(((byte[])value).DecompressString()) };
+                return new OrchestrationStateInstanceEntity
+                {
+                    State = dataConverter.Deserialize<OrchestrationState>(((byte[])value).DecompressString())
+                };
             }
         }
 
@@ -239,7 +245,7 @@ namespace maskx.DurableTask.SQLServer.Tracking
         public async Task InitializeStoreAsync(bool recreate)
         {
             if (recreate) await DeleteStoreAsync();
-            using (var db = new DbAccess(settings.ConnectionString))
+            using (var db = new SQLServerAccess(settings.ConnectionString))
             {
                 db.AddStatement($@"IF(SCHEMA_ID(@schema) IS NULL)
                     BEGIN
@@ -298,7 +304,7 @@ namespace maskx.DurableTask.SQLServer.Tracking
                     throw new ArgumentOutOfRangeException($"Unknown {nameof(timeRangeFilterType)} value: {timeRangeFilterType}");
             }
 
-            using (var db = new DbAccess(settings.ConnectionString))
+            using (var db = new SQLServerAccess(settings.ConnectionString))
             {
                 db.AddStatement(deleteStatement, new
                 {
@@ -312,8 +318,7 @@ namespace maskx.DurableTask.SQLServer.Tracking
         /// <inheritdoc />
         public async Task<object> WriteEntitiesAsync(IEnumerable<InstanceEntityBase> entities)
         {
-           
-            using (var db = new DbAccess(settings.ConnectionString))
+            using (var db = new SQLServerAccess(settings.ConnectionString))
             {
                 foreach (var entity in entities)
                 {
@@ -363,7 +368,7 @@ namespace maskx.DurableTask.SQLServer.Tracking
 
             try
             {
-                using (var db = new DbAccess(settings.ConnectionString))
+                using (var db = new SQLServerAccess(settings.ConnectionString))
                 {
                     var sql = String.Format(MergeJumpStartEntitiesQuery, settings.JumpStartTableWithSchema);
 

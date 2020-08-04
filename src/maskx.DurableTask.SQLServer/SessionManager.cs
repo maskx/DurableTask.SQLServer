@@ -3,13 +3,17 @@ using DurableTask.Core.History;
 using DurableTask.Core.Serializing;
 using maskx.DurableTask.SQLServer.Extensions;
 using maskx.DurableTask.SQLServer.Settings;
-using maskx.DurableTask.SQLServer.SQL;
+using maskx.DurableTask.SQLServer.Database;
+using maskx.DurableTask.SQLServer.Utils;
 using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 using System.Runtime.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Data;
+using System.Reflection;
+using System.Linq;
 
 namespace maskx.DurableTask.SQLServer
 {
@@ -25,21 +29,8 @@ namespace maskx.DurableTask.SQLServer
 
         public async Task CreateSessionAsync(TaskMessage message)
         {
-            string sql = string.Format(CreateSessionSQL, settings.SessionTableName, settings.SessionMessageTableName);
-            using var db = new DbAccess(settings.ConnectionString);
-            db.AddStatement(sql, new
-            {
-                message.OrchestrationInstance.ExecutionId,
-                message.OrchestrationInstance.InstanceId,
-                message.SequenceNumber,
-                LockedUntilUtc = DBNull.Value,
-                Status = "Pending",
-                FireAt = GetFireTime(message),
-                OrchestrationInstance = dataConverter.Serialize(message.OrchestrationInstance),
-                Event = dataConverter.Serialize(message.Event).CompressString(),
-                ExtensionData = dataConverter.Serialize(message.ExtensionData).CompressString()
-            });
-            await db.ExecuteNonQueryAsync();
+            using var db = new SQLServerAccess(settings.ConnectionString);
+            await db.ExecuteNonQueryAsync("CreateSessionSPName", new { NewInstanceEvents = message.ToTableValueParameter() });
         }
 
         public async Task SendMessageAsync(params TaskMessage[] messages)
@@ -47,7 +38,7 @@ namespace maskx.DurableTask.SQLServer
             if (messages.Length == 0)
                 return;
             string sql = string.Format(SendMessageSQL, settings.SessionTableName, settings.SessionMessageTableName);
-            using var db = new DbAccess(settings.ConnectionString);
+            using var db = new SQLServerAccess(settings.ConnectionString);
             foreach (var msg in messages)
             {
                 db.AddStatement(sql, new
@@ -69,7 +60,7 @@ namespace maskx.DurableTask.SQLServer
         public async Task<SQLServerOrchestrationSession> AcceptSessionAsync(TimeSpan receiveTimeout, CancellationToken cancellationToken)
         {
             SQLServerOrchestrationSession t = null;
-            using DbAccess db = new DbAccess(settings.ConnectionString);
+            using DbAccess db = new SQLServerAccess(settings.ConnectionString);
 
             db.AddStatement(string.Format(AcceptSessionSql, settings.SessionTableName, settings.SessionMessageTableName), new
             {
@@ -140,7 +131,7 @@ namespace maskx.DurableTask.SQLServer
         public async Task AbandonSessionAsync(string id)
         {
             //TODO: abandon session
-            using var db = new DbAccess(settings.ConnectionString);
+            using var db = new SQLServerAccess(settings.ConnectionString);
             db.AddStatement(string.Format(AbandonSessionSql, settings.SessionTableName, settings.SessionMessageTableName), new
             {
                 InstanceId = id
@@ -150,7 +141,7 @@ namespace maskx.DurableTask.SQLServer
 
         public async Task SetStateAsync(string id, OrchestrationRuntimeState newState)
         {
-            using var db = new DbAccess(settings.ConnectionString);
+            using var db = new SQLServerAccess(settings.ConnectionString);
             if (newState == null)
             {
                 db.AddStatement(string.Format(RemoveSessionSql, settings.SessionTableName, settings.SessionMessageTableName), new
@@ -173,7 +164,7 @@ namespace maskx.DurableTask.SQLServer
         public async Task<int> GetPendingOrchestrationsCount()
         {
             int count = 0;
-            using (var db = new DbAccess(settings.ConnectionString))
+            using (var db = new SQLServerAccess(settings.ConnectionString))
             {
                 db.AddStatement(string.Format(GetPendingOrchestrationsCountSQL, settings.SessionTableName));
                 var rtv = await db.ExecuteScalarAsync();
@@ -191,7 +182,7 @@ WHERE InstanceId=@InstanceId
 ";
 
             DateTime dt = DateTime.UtcNow.AddSeconds(this.settings.MessageLockedSeconds);
-            using (var db = new DbAccess(settings.ConnectionString))
+            using (var db = new SQLServerAccess(settings.ConnectionString))
             {
                 db.AddStatement(sql, new
                 {
@@ -201,60 +192,6 @@ WHERE InstanceId=@InstanceId
                 await db.ExecuteNonQueryAsync();
             }
             return dt;
-        }
-
-        public async Task DeleteSessionManagerAsync()
-        {
-            using (var db = new DbAccess(settings.ConnectionString))
-            {
-                db.AddStatement($"DROP TABLE IF EXISTS {settings.SessionMessageTableName}");
-                db.AddStatement($"DROP TABLE IF EXISTS {settings.SessionTableName}");
-                await db.ExecuteNonQueryAsync();
-            }
-        }
-
-        public async Task InitializeSessionManagerAsync(bool recreate)
-        {
-            if (recreate) await DeleteSessionManagerAsync();
-            using (var db = new DbAccess(settings.ConnectionString))
-            {
-                db.AddStatement($@"IF(SCHEMA_ID(@schema) IS NULL)
-                    BEGIN
-                        EXEC sp_executesql N'CREATE SCHEMA [{settings.SchemaName}]'
-                    END", new { schema = settings.SchemaName });
-
-                db.AddStatement($@"
-IF(OBJECT_ID(@table) IS NULL)
-BEGIN
-    CREATE TABLE {settings.SessionTableName} (
-        [InstanceId] [nvarchar](50) NOT NULL,
-	    [LockedUntilUtc] [datetime2](7)  NULL,
-	    [Status] [nvarchar](50) NOT NULL,
-	    [SessionState] varbinary(max) NULL,
-    CONSTRAINT [PK_{settings.SchemaName}_{settings.HubName}_{SQLServerSettings.SessionTable}] PRIMARY KEY CLUSTERED
-    (
-	    [InstanceId] ASC
-    )WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON) ON [PRIMARY]
-    ) ON [PRIMARY] TEXTIMAGE_ON [PRIMARY]
-END", new { table = settings.SessionTableName });
-
-                db.AddStatement($@"
-IF(OBJECT_ID(@table) IS NULL)
-BEGIN
-    CREATE TABLE {settings.SessionMessageTableName} (
-	    [InstanceId] [nvarchar](50) NOT NULL,
-	    [ExecutionId] [nvarchar](50)  NULL,
-	    [SequenceNumber] [bigint] NOT NULL,
-	    [FireAt] [datetime2](7) NULL,
-	    [LockedUntilUtc] [datetime2](7) NULL,
-	    [Status] [nvarchar](50) NOT NULL,
-	    [OrchestrationInstance] [nvarchar](500) NULL,
-	    [Event] varbinary(max) NULL,
-	    [ExtensionData] varbinary(max) NULL
-    ) ON [PRIMARY] TEXTIMAGE_ON [PRIMARY]
-END", new { table = settings.SessionMessageTableName });
-                await db.ExecuteNonQueryAsync();
-            }
         }
 
         private DateTime? GetFireTime(TaskMessage msg)
@@ -281,6 +218,7 @@ END", new { table = settings.SessionMessageTableName });
             return JsonConvert.SerializeObject(runtimeState.Events,
                 new JsonSerializerSettings { TypeNameHandling = TypeNameHandling.Auto }).CompressString();
         }
+
         private OrchestrationRuntimeState DeserializeOrchestrationRuntimeState(byte[] serializedState)
         {
             var events = JsonConvert.DeserializeObject<IList<HistoryEvent>>(serializedState.DecompressString(), new JsonSerializerSettings { TypeNameHandling = TypeNameHandling.Auto });
@@ -367,7 +305,7 @@ COMMIT TRANSACTION
         output INSERTED.InstanceId,INSERTED.LockedUntilUtc,INSERTED.[Status],INSERTED.SessionState
         where [Status]='Pending'
             and (select count(0) from {1} where {1}.InstanceId={0}.InstanceId
-                and FireAt is null 
+                and FireAt is null
                 and [Status]='Pending')>0
     end
 
@@ -402,6 +340,7 @@ COMMIT TRANSACTION
     end
 COMMIT TRANSACTION
 ";
+
         private const string AbandonSessionSql = @"
 BEGIN TRANSACTION
     update {1} set Status=N'Abandon' where InstanceId=@InstanceId and Status=N'Locked'

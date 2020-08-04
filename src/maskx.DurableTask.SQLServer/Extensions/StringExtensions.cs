@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.Text;
@@ -15,12 +14,12 @@ namespace maskx.DurableTask.SQLServer.Extensions
             var compressBeforeByte = Encoding.UTF8.GetBytes(str);
             return Compress(compressBeforeByte);
         }
+
         public static string DecompressString(this byte[] compressBeforeByte)
         {
             var compressAfterByte = Decompress(compressBeforeByte);
             return Encoding.UTF8.GetString(compressAfterByte);
         }
-        
 
         /// <summary>
         /// Compress
@@ -40,7 +39,6 @@ namespace maskx.DurableTask.SQLServer.Extensions
                 ms.Read(buffer, 0, buffer.Length);
                 ms.Close();
                 return buffer;
-
             }
             catch (Exception e)
             {

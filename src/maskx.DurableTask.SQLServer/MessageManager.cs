@@ -3,7 +3,7 @@ using DurableTask.Core.History;
 using DurableTask.Core.Serializing;
 using maskx.DurableTask.SQLServer.Extensions;
 using maskx.DurableTask.SQLServer.Settings;
-using maskx.DurableTask.SQLServer.SQL;
+using maskx.DurableTask.SQLServer.Database;
 using Newtonsoft.Json;
 using System;
 using System.Runtime.Serialization;
@@ -25,7 +25,7 @@ namespace maskx.DurableTask.SQLServer
         public async Task<TaskActivityWorkItem> ReceiveMessageAsync(TimeSpan receiveTimeout, CancellationToken cancellationToken)
         {
             TaskActivityWorkItem t = null;
-            using (var db = new DbAccess(settings.ConnectionString))
+            using (var db = new SQLServerAccess(settings.ConnectionString))
             {
                 db.AddStatement(string.Format(ReceiveMessageCommand, settings.MessageTableName),
                     new
@@ -59,7 +59,7 @@ INSERT INTO {this.settings.MessageTableName}
 VALUES
 (newid(),@InstanceId,@ExecutionId,@SequenceNumber,@OrchestrationInstance,@LockedUntilUtc,@Status,@Event,@ExtensionData);
 ";
-            using var db = new DbAccess(settings.ConnectionString);
+            using var db = new SQLServerAccess(settings.ConnectionString);
             foreach (var msg in message)
             {
                 db.AddStatement(sql, new
@@ -80,7 +80,7 @@ VALUES
         public async Task CompleteMessageAsync(TaskActivityWorkItem workItem)
         {
             string sql = $"DELETE {this.settings.MessageTableName} WHERE Id=@Id";
-            using var db = new DbAccess(settings.ConnectionString);
+            using var db = new SQLServerAccess(settings.ConnectionString);
             db.AddStatement(sql, new
             {
                 workItem.Id
@@ -95,7 +95,7 @@ UPDATE {this.settings.MessageTableName}
 SET [Status]=N'Abandon',LockedUntilUtc=@LockedUntilUtc
 WHERE Id=@Id
 ";
-            using var db = new DbAccess(settings.ConnectionString);
+            using var db = new SQLServerAccess(settings.ConnectionString);
             db.AddStatement(sql, new
             {
                 workItem.Id,
@@ -112,7 +112,7 @@ SET LockedUntilUtc=@LockedUntilUtc
 WHERE Id=@Id
 ";
             DateTime dt = DateTime.UtcNow.AddSeconds(this.settings.MessageLockedSeconds);
-            using (var db = new DbAccess(settings.ConnectionString))
+            using (var db = new SQLServerAccess(settings.ConnectionString))
             {
                 db.AddStatement(sql, new
                 {
@@ -126,7 +126,7 @@ WHERE Id=@Id
 
         public async Task DeleteMessageManagerAsync()
         {
-            using var db = new DbAccess(settings.ConnectionString);
+            using var db = new SQLServerAccess(settings.ConnectionString);
             db.AddStatement($"DROP TABLE IF EXISTS {settings.MessageTableName}");
             await db.ExecuteNonQueryAsync();
         }
@@ -134,7 +134,7 @@ WHERE Id=@Id
         public async Task InitializeMessageManagerAsync(bool recreate)
         {
             if (recreate) await DeleteMessageManagerAsync();
-            using var db = new DbAccess(settings.ConnectionString);
+            using var db = new SQLServerAccess(settings.ConnectionString);
             db.AddStatement($@"IF(SCHEMA_ID(@schema) IS NULL)
                     BEGIN
                         EXEC sp_executesql N'CREATE SCHEMA [{settings.SchemaName}]'

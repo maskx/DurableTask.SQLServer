@@ -49,7 +49,8 @@ namespace maskx.DurableTask.SQLServer.Tests
         {
             var settings = new SQLServerOrchestrationServiceSettings
             {
-                TaskOrchestrationDispatcherSettings = { CompressOrchestrationState = true }
+                TaskOrchestrationDispatcherSettings = { CompressOrchestrationState = true },
+                SchemaName = "DT"
             };
 
             return settings;
@@ -59,6 +60,7 @@ namespace maskx.DurableTask.SQLServer.Tests
         {
             var settings = new SQLServerOrchestrationServiceSettings
             {
+                SchemaName = "DT"
             };
 
             return settings;
@@ -91,7 +93,7 @@ namespace maskx.DurableTask.SQLServer.Tests
         {
             return new SqlServerInstanceStore(new SqlServerInstanceStoreSettings()
             {
-                SchemaName = "dbo",
+                SchemaName = "DT",
                 HubName = "DTF",
                 ConnectionString = SQLServerConnectionString
             });

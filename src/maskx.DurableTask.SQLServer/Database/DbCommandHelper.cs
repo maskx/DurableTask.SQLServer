@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Data;
 using System.Data.Common;
-using System.Text;
 
 namespace maskx.DurableTask.SQLServer.Database
 {
@@ -14,7 +13,7 @@ namespace maskx.DurableTask.SQLServer.Database
     {
         internal readonly static IDictionary<string, object> EmptyParameters = new Dictionary<string, object>();
 
-        internal static void AddStatement(this DbCommand source, string sql, IDictionary<string, object> parameters = null)
+        internal static void AddStatement(this DbCommand source, string sql, IDictionary<string, object>? parameters = null)
         {
             if (source == null) throw new ArgumentNullException(nameof(source));
 
@@ -35,18 +34,19 @@ namespace maskx.DurableTask.SQLServer.Database
             return;
         }
 
-        internal static void AddStatement(this DbCommand source, string sql, object parameters)
+        internal static void AddStatement(this DbCommand source, string sql, object? parameters)
         {
             if (source == null) throw new ArgumentNullException(nameof(source));
 
             var dictionary = new Dictionary<string, object>();
 
-            //convert object to dictionary
-            foreach (PropertyDescriptor descriptor in TypeDescriptor.GetProperties(parameters))
+            if (parameters != null)
             {
-                dictionary.Add(descriptor.Name, descriptor.GetValue(parameters));
+                foreach (PropertyDescriptor descriptor in TypeDescriptor.GetProperties(parameters))
+                {
+                    dictionary.Add(descriptor.Name, descriptor.GetValue(parameters));
+                }
             }
-
             source.AddStatement(sql, dictionary);
         }
 

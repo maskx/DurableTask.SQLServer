@@ -3,17 +3,31 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Data;
 using System.Data.Common;
+using System.Data.SqlClient;
 using System.Threading.Tasks;
 
 namespace maskx.DurableTask.SQLServer.Database
 {
     public class DbAccess : IDisposable
     {
+        private DbCommand _Command;
+        public DbCommand Command
+        {
+            get
+            {
+                if (_Command == null)
+                {
+                    _Command = connection.CreateCommand();
+                    _Command.CommandType = CommandType.Text;
+                }
+
+                return _Command;
+            }
+            set { _Command = value; }
+        }
         protected DbConnection connection;
-        protected readonly DbCommand command;
         protected const int _MaxRetryCount = 2;
         protected const int _IncreasingDelayRetry = 500;
-
         protected enum RetryAction
         {
             None = 0,
@@ -25,123 +39,243 @@ namespace maskx.DurableTask.SQLServer.Database
         {
             connection = dbProviderFactory.CreateConnection();
             connection.ConnectionString = connectionString;
-            command = connection.CreateCommand();
         }
 
-        public DbAccess AddStatement(string sql, IDictionary<string, object> parameters = null)
+        #region CommandType.Text
+
+        #region AddStatement
+        public DbAccess AddStatement(string sql)
         {
-            command.AddStatement(sql, parameters);
+            Command.AddStatement(sql, null);
+            return this;
+        }
+        public DbAccess AddStatement(string sql, IDictionary<string, object> parameters)
+        {
+            Command.AddStatement(sql, parameters);
             return this;
         }
 
         public DbAccess AddStatement(string sql, object parameters)
         {
-            command.AddStatement(sql, parameters);
+            Command.AddStatement(sql, parameters);
             return this;
         }
+        #endregion
 
+        #region ExecuteScalarAsync
         public async Task<object> ExecuteScalarAsync()
         {
-            if (string.IsNullOrEmpty(command.CommandText))
+            if (string.IsNullOrEmpty(Command.CommandText))
                 throw new Exception("commandText cannot be empty");
             object obj;
-            obj = await ExcuteWithRetry(() => command.ExecuteScalarAsync());
+            obj = await ExcuteWithRetry(() => Command.ExecuteScalarAsync());
             return obj;
         }
+        #endregion
 
+        #region ExecuteReaderAsync
         public async Task ExecuteReaderAsync(Action<DbDataReader> dataReader)
         {
-            if (string.IsNullOrEmpty(command.CommandText))
+            if (string.IsNullOrEmpty(Command.CommandText))
                 return;
-            using (DbDataReader reader = await ExcuteWithRetry(() => command.ExecuteReaderAsync()))
-            {
-                dataReader?.Invoke(reader);
-            }
+            using DbDataReader reader = await ExcuteWithRetry(() => Command.ExecuteReaderAsync(), false);
+            dataReader?.Invoke(reader);
         }
 
         public async Task ExecuteReaderAsync(Action<DbDataReader, int> dataReaders, bool bulkRead = false)
         {
-            if (string.IsNullOrEmpty(command.CommandText))
+            if (string.IsNullOrEmpty(Command.CommandText))
                 return;
-
-            using (DbDataReader reader = await ExcuteWithRetry(() => command.ExecuteReaderAsync()))
+            using DbDataReader reader = await ExcuteWithRetry(() => Command.ExecuteReaderAsync(), false);
+            int resultSet = 0;
+            do
             {
-                if (dataReaders != null)
-                {
-                    int resultSet = 0;
-                    do
-                    {
-                        if (dataReaders != null)
-                            if (bulkRead)
-                                dataReaders(reader, resultSet);
-                            else
-                                while (await reader.ReadAsync())
-                                    dataReaders(reader, resultSet);
+                if (bulkRead)
+                    dataReaders(reader, resultSet);
+                else
+                    while (await reader.ReadAsync())
+                        dataReaders(reader, resultSet);
 
-                        resultSet++;
-                    } while (await reader.NextResultAsync());
-                }
-            }
+                resultSet++;
+            } while (await reader.NextResultAsync());
         }
 
-        private DbCommand CreateCommand(string commandText, int commandTimeout, CommandType commandType, object parameters)
-        {
-            var dictionary = new Dictionary<string, object>();
-            if (parameters != null)
-            {
-                //convert object to dictionary
-                foreach (PropertyDescriptor descriptor in TypeDescriptor.GetProperties(parameters))
-                {
-                    dictionary.Add(descriptor.Name, descriptor.GetValue(parameters));
-                }
-            }
-            return CreateCommand(commandText, commandTimeout, commandType, dictionary);
-        }
+        #endregion
 
-        private DbCommand CreateCommand(string commandText, int commandTimeout, CommandType commandType, Dictionary<string, object> parameters)
+        #region ExecuteNonQueryAsync
+        public async Task<int> ExecuteNonQueryAsync()
         {
-            command.CommandType = commandType;
-            command.CommandText = commandText;
+            if (string.IsNullOrEmpty(Command.CommandText))
+                return 0;
+            int recordsAffected;
+            recordsAffected = await ExcuteWithRetry(() => Command.ExecuteNonQueryAsync());
+            return recordsAffected;
+        }
+        #endregion
+
+        #endregion
+
+        #region CommandType.StoredProcedure
+
+        #region ExecuteNonQueryAsync
+        public async Task<int> ExecuteStoredProcedureASync(string spnmae, int commandTimeout = 0)
+        {
+            Command = CreateStoredProcedureCommand(spnmae, commandTimeout);
+            var recordsAffected = await ExcuteWithRetry(() => Command.ExecuteNonQueryAsync());
+            return recordsAffected;
+        }
+        public async Task<int> ExecuteStoredProcedureASync(string spnmae, object parameters, int commandTimeout = 0)
+        {
+            Command = CreateStoredProcedureCommand(spnmae, commandTimeout, parameters);
+            var recordsAffected = await ExcuteWithRetry(() => Command.ExecuteNonQueryAsync());
+            return recordsAffected;
+        }
+        public async Task<int> ExecuteStoredProcedureASync(string spnmae, Dictionary<string, object> parameters, int commandTimeout = 0)
+        {
+            Command = CreateStoredProcedureCommand(spnmae, commandTimeout, parameters);
+            var recordsAffected = await ExcuteWithRetry(() => Command.ExecuteNonQueryAsync());
+            return recordsAffected;
+        }
+        public async Task<int> ExecuteStoredProcedureASync(string commandText, DbParameter[] parameters, int commandTimeout = 0)
+        {
+            Command = CreateStoredProcedureCommand(commandText, commandTimeout, parameters);
+            var recordsAffected = await ExcuteWithRetry(() => Command.ExecuteNonQueryAsync());
+            return recordsAffected;
+        }
+        #endregion ExecuteNonQueryAsync
+
+        #region ExecuteStoredProcedure
+        public async Task ExecuteStoredProcedureASync(string spname, Action<DbDataReader, int> dataReader, int commandTimeout = 0)
+        {
+            using DbDataReader reader = await CreateStoredProcedureReaderASync(spname, commandTimeout);
+            int resultSet = 0;
+            do
+            {
+                while (reader.Read())
+                    dataReader(reader, resultSet);
+                resultSet++;
+            } while (reader.NextResult());
+            reader.Close();
+        }
+        public async Task ExecuteStoredProcedureASync(string spname, Action<DbDataReader, int> dataReader, Dictionary<string, object> parameters, int commandTimeout = 0)
+        {
+            using DbDataReader reader = await CreateStoredProcedureReaderASync(spname, commandTimeout, parameters);
+            int resultSet = 0;
+            do
+            {
+                while (reader.Read())
+                    dataReader(reader, resultSet);
+                resultSet++;
+            } while (reader.NextResult());
+            reader.Close();
+        }
+        public async Task ExecuteStoredProcedureASync(string spname, Action<DbDataReader, int> dataReader, object parameters, int commandTimeout = 0)
+        {
+            using DbDataReader reader = await CreateStoredProcedureReaderASync(spname, commandTimeout, parameters);
+            int resultSet = 0;
+            do
+            {
+                while (reader.Read())
+                    dataReader(reader, resultSet);
+                resultSet++;
+            } while (reader.NextResult());
+            reader.Close();
+        }
+        public async Task ExecuteStoredProcedureASync(string spname, Action<DbDataReader, int> dataReader, DbParameter[] parameters, int commandTimeout = 0)
+        {
+            using DbDataReader reader = await CreateStoredProcedureReaderASync(spname, commandTimeout, parameters);
+            int resultSet = 0;
+            do
+            {
+                while (reader.Read())
+                    dataReader(reader, resultSet);
+                resultSet++;
+            } while (reader.NextResult());
+            reader.Close();
+        }
+       
+        #endregion
+
+        #region CreateStoredProcedureCommand
+        private DbCommand CreateStoredProcedureCommand(string spname, int commandTimeout)
+        {
+            if (connection == null)
+                throw new ObjectDisposedException("DbAccess");
+
+            var dbCommand = connection.CreateCommand();
+            dbCommand.CommandType = CommandType.StoredProcedure;
+            dbCommand.CommandText = spname;
 
             if (commandTimeout > 0)
-                command.CommandTimeout = commandTimeout;
+                dbCommand.CommandTimeout = commandTimeout;
 
+            return dbCommand;
+        }
+        private DbCommand CreateStoredProcedureCommand(string commandText, int commandTimeout, object parameters)
+        {
+            var dbCommand = CreateStoredProcedureCommand(commandText, commandTimeout);
+            if (parameters != null)
+            {
+                foreach (PropertyDescriptor descriptor in TypeDescriptor.GetProperties(parameters))
+                {
+                    dbCommand.AddParameter(descriptor.Name, descriptor.GetValue(parameters));
+                }
+            }
+            return dbCommand;
+        }
+        private DbCommand CreateStoredProcedureCommand(string commandText, int commandTimeout, Dictionary<string, object> parameters)
+        {
+            var dbCommand = CreateStoredProcedureCommand(commandText, commandTimeout);
             foreach (var par in parameters)
             {
-                command.AddParameter(par.Key, par.Value);
+                dbCommand.AddParameter(par.Key, par.Value);
             }
-            return command;
+            return dbCommand;
         }
+        private DbCommand CreateStoredProcedureCommand(string commandText, int commandTimeout, DbParameter[] parameters)
+        {
+            var dbCommand = CreateStoredProcedureCommand(commandText, commandTimeout);
+            dbCommand.Parameters.AddRange(parameters);
+            return dbCommand;
+        }
+        #endregion
 
-        public async Task<DbDataReader> CreateReaderAsync(string commandText
-             , int commandTimeout
-             , CommandType commandType
-             , object parameters = null)
+        #region CreateStoredProcedureReaderASync
+        private async Task<DbDataReader> CreateStoredProcedureReaderASync(string spname, int commandTimeout)
         {
             return await ExcuteWithRetry(() =>
-           {
-               var dbCmd = CreateCommand(commandText, commandTimeout, commandType, parameters);
-               return dbCmd.ExecuteReaderAsync(CommandBehavior.CloseConnection);
-           });
-        }
-
-        public async Task<DbParameterCollection> ExecuteReaderAsync(string commandText, Action<DbDataReader, int> dataReader, object parameters = null, CommandType commandType = CommandType.StoredProcedure, int commandTimeout = 0)
-        {
-            using (DbDataReader reader = await CreateReaderAsync(commandText, commandTimeout, commandType, parameters))
             {
-                if (dataReader == null)
-                    return null;
-                int resultSet = 0;
-                do
-                {
-                    while (reader.Read())
-                        dataReader(reader, resultSet);
-                    resultSet++;
-                } while (reader.NextResult());
-                reader.Close();
-                return command.Parameters;
-            }
+                Command = CreateStoredProcedureCommand(spname, commandTimeout);
+                return Command.ExecuteReaderAsync(CommandBehavior.CloseConnection);
+            }, false);
         }
+        private async Task<DbDataReader> CreateStoredProcedureReaderASync(string spname, int commandTimeout, Dictionary<string, object> parameters)
+        {
+            return await ExcuteWithRetry(() =>
+            {
+                Command = CreateStoredProcedureCommand(spname, commandTimeout, parameters);
+                return Command.ExecuteReaderAsync(CommandBehavior.CloseConnection);
+            }, false);
+        }
+        private async Task<DbDataReader> CreateStoredProcedureReaderASync(string spname, int commandTimeout, object parameters)
+        {
+            return await ExcuteWithRetry(() =>
+            {
+                Command = CreateStoredProcedureCommand(spname, commandTimeout, parameters);
+                return Command.ExecuteReaderAsync(CommandBehavior.CloseConnection);
+            }, false);
+        }
+        private async Task<DbDataReader> CreateStoredProcedureReaderASync(string spname, int commandTimeout, DbParameter[] parameters)
+        {
+            return await ExcuteWithRetry(() =>
+            {
+                Command = CreateStoredProcedureCommand(spname, commandTimeout, parameters);
+                return Command.ExecuteReaderAsync(CommandBehavior.CloseConnection);
+            }, false);
+        }
+        #endregion
+
+        #endregion
 
         private void ReConnect()
         {
@@ -156,24 +290,7 @@ namespace maskx.DurableTask.SQLServer.Database
                 connection.Open();
             }
         }
-
-        public async Task<int> ExecuteNonQueryAsync()
-        {
-            if (string.IsNullOrEmpty(command.CommandText))
-                return 0;
-            int recordsAffected;
-            recordsAffected = await ExcuteWithRetry(() => command.ExecuteNonQueryAsync());
-            return recordsAffected;
-        }
-
-        public async Task<int> ExecuteNonQueryAsync(string commandText, object parameters = null, CommandType commandType = CommandType.StoredProcedure, int commandTimeout = 0)
-        {
-            var dbCmd = CreateCommand(commandText, commandTimeout, commandType, parameters);
-            var recordsAffected = await ExcuteWithRetry(() => dbCmd.ExecuteNonQueryAsync());
-            return recordsAffected;
-        }
-
-        private async Task<T> ExcuteWithRetry<T>(Func<Task<T>> func)
+        private async Task<T> ExcuteWithRetry<T>(Func<Task<T>> func, bool closeConnection = true)
         {
             try
             {
@@ -205,10 +322,9 @@ namespace maskx.DurableTask.SQLServer.Database
             }
             finally
             {
-                try { connection.Close(); } catch { }
+                try { if (closeConnection) connection.Close(); } catch { }
             }
         }
-
         protected virtual RetryAction OnContextLost(Exception dbException)
         {
             return RetryAction.None;
@@ -232,10 +348,8 @@ namespace maskx.DurableTask.SQLServer.Database
             {
                 if (connection.State != ConnectionState.Closed)
                 {
-                    connection.Dispose();          // Close()
+                    connection.Dispose();
                 }
-
-                connection = null;
             }
         }
 

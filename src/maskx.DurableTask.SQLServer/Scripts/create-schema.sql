@@ -7,7 +7,7 @@ IF NOT EXISTS (SELECT 1 FROM sys.schemas WHERE name = '{0}')
 -- Create custom types
 -- WARNING: Reordering fields is a breaking change!
 IF TYPE_ID(N'{0}.{1}_TaskEvent') IS NULL
-    CREATE TYPE {0}.{1}_TaskEvent AS TABLE (
+    CREATE TYPE [{0}].[{1}_TaskEvent] AS TABLE (
         SequenceNumber bigint NULL,
         VisibleTime datetime2 NULL,
         InstanceID nvarchar(100) NULL,
@@ -29,7 +29,7 @@ IF TYPE_ID(N'{0}.{1}_TaskEvent') IS NULL
 
 IF OBJECT_ID(N'{0}.{1}_Session', 'U') IS NULL
 BEGIN
-	CREATE TABLE {0}.{1}_Session (
+	CREATE TABLE [{0}].[{1}_Session] (
 		ID nvarchar(100) NOT NULL CONSTRAINT PK_{0}_{1}_Session PRIMARY KEY,
 		ExecutionID nvarchar(100) NOT NULL,
         [Name] nvarchar(256) NOT NULL,
@@ -49,7 +49,7 @@ END
 
 IF OBJECT_ID(N'{0}.{1}_NewEvent', 'U') IS NULL
 BEGIN
-    CREATE TABLE {0}.{1}_NewEvent (
+    CREATE TABLE [{0}].[{1}_NewEvent] (
         -- Metadata columns
         SequenceNumber bigint IDENTITY NOT NULL,
         [Timestamp] datetime2 NOT NULL CONSTRAINT {0}_{1}_NewEvent_Timestamp DEFAULT SYSUTCDATETIME(),
@@ -70,7 +70,7 @@ BEGIN
 END
 
 IF OBJECT_ID(N'{0}.{1}_NewTask', 'U') IS NULL
-    CREATE TABLE {0}.{1}_NewTask (
+    CREATE TABLE [{0}].[{1}_NewTask] (
         -- Metadata columns
         SequenceNumber bigint CONSTRAINT PK_{0}_{1}NewTask_SequenceNumber PRIMARY KEY IDENTITY NOT NULL,
         [Timestamp] datetime2 NOT NULL CONSTRAINT DF_{0}_{1}_NewTask_Timestamp DEFAULT SYSUTCDATETIME(),

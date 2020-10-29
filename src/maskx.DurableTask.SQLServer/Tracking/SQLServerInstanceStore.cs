@@ -35,7 +35,7 @@ namespace maskx.DurableTask.SQLServer.Tracking
         public int MaxHistoryEntryLength => int.MaxValue;
 
         /// <inheritdoc />
-        public async Task<object> DeleteEntitiesAsync(IEnumerable<InstanceEntityBase> entities)
+        public async Task<object?> DeleteEntitiesAsync(IEnumerable<InstanceEntityBase> entities)
         {
             using (var db = new SQLServerAccess(settings.ConnectionString))
             {
@@ -61,7 +61,7 @@ namespace maskx.DurableTask.SQLServer.Tracking
         }
 
         /// <inheritdoc />
-        public async Task<object> DeleteJumpStartEntitiesAsync(IEnumerable<OrchestrationJumpStartInstanceEntity> entities)
+        public async Task<object?> DeleteJumpStartEntitiesAsync(IEnumerable<OrchestrationJumpStartInstanceEntity> entities)
         {
             using (var db = new SQLServerAccess(settings.ConnectionString))
             {
@@ -222,7 +222,7 @@ namespace maskx.DurableTask.SQLServer.Tracking
         }
 
         /// <inheritdoc />
-        public async Task<OrchestrationStateInstanceEntity> GetOrchestrationStateAsync(string instanceId, string executionId)
+        public async Task<OrchestrationStateInstanceEntity?> GetOrchestrationStateAsync(string instanceId, string executionId)
         {
             using (var db = new SQLServerAccess(settings.ConnectionString))
             {
@@ -316,7 +316,7 @@ namespace maskx.DurableTask.SQLServer.Tracking
         }
 
         /// <inheritdoc />
-        public async Task<object> WriteEntitiesAsync(IEnumerable<InstanceEntityBase> entities)
+        public async Task<object?> WriteEntitiesAsync(IEnumerable<InstanceEntityBase> entities)
         {
             using (var db = new SQLServerAccess(settings.ConnectionString))
             {
@@ -361,7 +361,7 @@ namespace maskx.DurableTask.SQLServer.Tracking
         }
 
         /// <inheritdoc />
-        public async Task<object> WriteJumpStartEntitiesAsync(IEnumerable<OrchestrationJumpStartInstanceEntity> entities)
+        public async Task<object?> WriteJumpStartEntitiesAsync(IEnumerable<OrchestrationJumpStartInstanceEntity> entities)
         {
             if (entities == null || entities.Count() == 0)
                 return null;

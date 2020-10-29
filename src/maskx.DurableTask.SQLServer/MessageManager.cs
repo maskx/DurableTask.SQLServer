@@ -22,9 +22,9 @@ namespace maskx.DurableTask.SQLServer
             this.settings = settings;
         }
 
-        public async Task<TaskActivityWorkItem> ReceiveMessageAsync(TimeSpan receiveTimeout, CancellationToken cancellationToken)
+        public async Task<TaskActivityWorkItem?> ReceiveMessageAsync(TimeSpan receiveTimeout, CancellationToken cancellationToken)
         {
-            TaskActivityWorkItem t = null;
+            TaskActivityWorkItem? t = null;
             using (var db = new SQLServerAccess(settings.ConnectionString))
             {
                 db.AddStatement(string.Format(ReceiveMessageCommand, settings.MessageTableName),

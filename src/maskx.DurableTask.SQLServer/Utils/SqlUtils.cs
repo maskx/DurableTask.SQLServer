@@ -2,6 +2,7 @@
 using DurableTask.Core.History;
 using maskx.DurableTask.SQLServer.Database;
 using maskx.DurableTask.SQLServer.Settings;
+using Microsoft.SqlServer.Management.Common;
 using Microsoft.SqlServer.Server;
 using System;
 using System.Collections.Generic;
@@ -222,26 +223,34 @@ namespace maskx.DurableTask.SQLServer.Utils
 
         internal static async Task ClearDatabaseAsync(SQLServerSettings settings)
         {
-            using (var db = new SQLServerAccess(settings.ConnectionString))
-            {
-                var str = await SqlUtils.GetScriptTextAsync("drop-schema", settings.SchemaName, settings.HubName);
-                await db.ExecuteNonQueryAsync(str, null, CommandType.Text);
-            }
+            using var db = new SQLServerAccess(settings.ConnectionString);
+            var str = await SqlUtils.GetScriptTextAsync("drop-schema", settings.SchemaName, settings.HubName);
+            db.AddStatement(str);
+            await db.ExecuteNonQueryAsync();
         }
 
         internal static async Task InitializeDatabase(bool recreate, SQLServerSettings settings)
         {
+            // todo: dddddd
             if (recreate) await ClearDatabaseAsync(settings);
             var str = await SqlUtils.GetScriptTextAsync("create-schema", settings.SchemaName, settings.HubName);
             var sp = await SqlUtils.GetStoredProcedureScriptTextAsync(settings.SchemaName, settings.HubName);
-            using (var db = new SQLServerAccess(settings.ConnectionString))
+            using var db = new SQLServerAccess(settings.ConnectionString);
+            db.AddStatement(str);
+            await db.ExecuteNonQueryAsync();
+            foreach (var item in sp)
             {
-                await db.ExecuteNonQueryAsync(str, null, CommandType.Text);
-                foreach (var item in sp)
-                {
-                    await db.ExecuteNonQueryAsync(item, null, CommandType.Text);
-                }
+                db.AddStatement(item);
+                await db.ExecuteNonQueryAsync();
             }
+        }
+
+        internal static async Task ExecuteSqlScriptAsync(string scriptName, SQLServerSettings settings)
+        {
+            string schemaCommands = await GetScriptTextAsync(scriptName, settings.SchemaName, settings.HubName);
+            await using Microsoft.Data.SqlClient.SqlConnection scriptRunnerConnection = new Microsoft.Data.SqlClient.SqlConnection(settings.ConnectionString);
+            var serverConnection = new ServerConnection(scriptRunnerConnection);
+            serverConnection.ExecuteNonQuery(schemaCommands);
         }
     }
 }

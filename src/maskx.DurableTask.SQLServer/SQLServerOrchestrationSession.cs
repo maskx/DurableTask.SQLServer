@@ -1,7 +1,6 @@
 ﻿using DurableTask.Core;
 using System;
 using System.Collections.Generic;
-using System.Threading.Tasks;
 
 namespace maskx.DurableTask.SQLServer
 {
@@ -11,20 +10,14 @@ namespace maskx.DurableTask.SQLServer
         public string InstanceId { get; set; }
         public string ExecutionId { get; set; }
         public OrchestrationRuntimeState SessionState { get; set; }
-        public List<TaskMessage> Messages { get; set; }
+        public List<TaskMessage> Messages { get; set; }= new List<TaskMessage>();
 
         /// <summary>
         /// for locked message Id
         /// </summary>
-        public HashSet<string> LockTable { get; set; }
+        public HashSet<string> LockTable { get; set; }= new HashSet<string>();
 
         public DateTime LockedUntilUtc { get; set; }
 
-        public SQLServerOrchestrationSession()
-        {
-            this.SessionState = null;
-            this.Messages = new List<TaskMessage>();
-            this.LockTable = new HashSet<string>();
-        }
     }
 }

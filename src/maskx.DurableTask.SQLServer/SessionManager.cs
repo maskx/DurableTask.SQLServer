@@ -1,19 +1,17 @@
 ﻿using DurableTask.Core;
 using DurableTask.Core.History;
 using DurableTask.Core.Serializing;
+using maskx.DurableTask.SQLServer.Database;
 using maskx.DurableTask.SQLServer.Extensions;
 using maskx.DurableTask.SQLServer.Settings;
-using maskx.DurableTask.SQLServer.Database;
-using maskx.DurableTask.SQLServer.Utils;
 using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
+using System.Data.Common;
+using System.Data.SqlClient;
 using System.Runtime.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Data;
-using System.Reflection;
-using System.Linq;
 
 namespace maskx.DurableTask.SQLServer
 {
@@ -27,10 +25,19 @@ namespace maskx.DurableTask.SQLServer
             this.settings = settings;
         }
 
-        public async Task CreateSessionAsync(TaskMessage message)
+        public async Task CreateSessionAsync(TaskMessage message, OrchestrationStatus[] dedupeStatuses)
         {
             using var db = new SQLServerAccess(settings.ConnectionString);
-            await db.ExecuteNonQueryAsync("CreateSessionSPName", new { NewInstanceEvents = message.ToTableValueParameter() });
+
+            await db.ExecuteStoredProcedureASync(settings.CreateSessionCommandName, new
+            {
+                ExecutionId = message.OrchestrationInstance.ExecutionId,
+                InstanceId = message.OrchestrationInstance.InstanceId,
+                SequenceNumber = message.SequenceNumber,
+                FireAt = GetFireTime(message),
+                Event = dataConverter.Serialize(message.Event).CompressString(),
+                ExtensionData = dataConverter.Serialize(message.ExtensionData).CompressString()
+            });
         }
 
         public async Task SendMessageAsync(params TaskMessage[] messages)
@@ -139,7 +146,7 @@ namespace maskx.DurableTask.SQLServer
             await db.ExecuteNonQueryAsync();
         }
 
-        public async Task SetStateAsync(string id, OrchestrationRuntimeState newState)
+        public async Task SetStateAsync(string id, OrchestrationRuntimeState? newState)
         {
             using var db = new SQLServerAccess(settings.ConnectionString);
             if (newState == null)

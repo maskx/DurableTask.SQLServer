@@ -94,7 +94,7 @@ namespace maskx.DurableTask.SQLServer
         {
             this.cancellationTokenSource.Cancel();
             TraceHelper.Trace(TraceEventType.Information, "SQLServerOrchestrationService-Stop", () => string.Empty);
-            return Task.FromResult<object>(null);
+            return Task.CompletedTask;
         }
 
         /// <inheritdoc />
@@ -118,7 +118,7 @@ namespace maskx.DurableTask.SQLServer
         /// <inheritdoc />
         public Task CreateTaskOrchestrationAsync(TaskMessage creationMessage)
         {
-            return CreateTaskOrchestrationAsync(creationMessage, null);
+            return CreateTaskOrchestrationAsync(creationMessage, Array.Empty<OrchestrationStatus>());
         }
 
         /// <inheritdoc />
@@ -130,11 +130,11 @@ namespace maskx.DurableTask.SQLServer
             }
             try
             {
-                await this.sessionManager.CreateSessionAsync(creationMessage);
+                await this.sessionManager.CreateSessionAsync(creationMessage, dedupeStatuses);
             }
             catch (Exception ex)
             {
-                TraceHelper.Trace(TraceEventType.Warning, "SQLServerOrchestrationService-CreateTaskOrchestrationAsync", $"Error while adding message to ServiceBus: {ex}");
+                TraceHelper.Trace(TraceEventType.Warning, "SQLServerOrchestrationService-CreateTaskOrchestrationAsync", $"Error while adding message to SQL Server: {ex}");
             }
         }
 
@@ -320,7 +320,7 @@ namespace maskx.DurableTask.SQLServer
         /// <inheritdoc />
         public Task ReleaseTaskOrchestrationWorkItemAsync(TaskOrchestrationWorkItem workItem)
         {
-            return Task.FromResult<object>(null);
+            return Task.CompletedTask;
         }
 
         /// <inheritdoc />
@@ -423,9 +423,9 @@ namespace maskx.DurableTask.SQLServer
 
         private void Dispose(bool disposing)
         {
-            if (disposing)
+            if (disposing && this.cancellationTokenSource!=null)
             {
-                this.cancellationTokenSource.Cancel();
+                if(!this.cancellationTokenSource.IsCancellationRequested) this.cancellationTokenSource.Cancel();
                 this.cancellationTokenSource.Dispose();
             }
         }
@@ -463,7 +463,7 @@ namespace maskx.DurableTask.SQLServer
             return true;
         }
 
-        private async Task ProcessTrackingWorkItemAsync(TrackingWorkItem workItem, OrchestrationRuntimeState state = null)
+        private async Task ProcessTrackingWorkItemAsync(TrackingWorkItem workItem, OrchestrationRuntimeState? state = null)
         {
             if (workItem == null)
                 return;

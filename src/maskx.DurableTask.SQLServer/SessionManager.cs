@@ -389,7 +389,7 @@ COMMIT TRANSACTION
         where InstanceId=@InstanceId
             and FireAt is null
             and ExecutionId is not null
-            and [Status]='Pending'
+            and ([Status]='Pending' or LockedUntilUtc<getutcdate())
     end
 
     if @ExecutionId is null
